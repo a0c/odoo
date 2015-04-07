@@ -141,7 +141,7 @@ class product_product(osv.osv):
         field_names = field_names or []
 
         domain_products = [('product_id', 'in', ids)]
-        domain_quant = list(context.get('domain_quant', []))
+        domain_quant = context.get('no_reservation') and [('reservation_id', '=', False)] or list(context.get('domain_quant', []))
         domain_move_in, domain_move_out = list(context.get('domain_move_in', [])), list(context.get('domain_move_out', []))
         domain_quant_loc, domain_move_in_loc, domain_move_out_loc = self._get_domain_locations(cr, uid, ids, context=context)
         domain_move_in += self._get_domain_dates(cr, uid, ids, context=context) + [('state', 'not in', ('done', 'cancel', 'draft'))] + domain_products
