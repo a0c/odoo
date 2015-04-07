@@ -773,6 +773,23 @@ class sale_order(osv.osv):
                 order.write(val)
         return True
 
+    def _scheduler_context(self, cr, uid, ids, context):
+        procs = [p.id for order in self.browse(cr, uid, ids, context=context)
+                 for p in order.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
+        return procs and dict(context or {}, active_model='procurement.order', active_ids=procs, active_id=procs[0] or 0) or False
+
+    def action_run_scheduler(self, cr, uid, ids, context=None):
+        ctx = self._scheduler_context(cr, uid, ids, context)
+        return ctx and {
+            'name': _('Run Schedulers'),
+            'view_mode': 'form',
+            'view_type': 'form',
+            'view_id': False,
+            'res_model': 'procurement.order.compute.all',
+            'type': 'ir.actions.act_window',
+            'target': 'new',
+            'context': ctx,
+        } or True
 
 
     def onchange_fiscal_position(self, cr, uid, ids, fiscal_position, order_lines, context=None):

@@ -12,6 +12,10 @@
                        <button name="ship_recreate" states="shipping_except" string="Recreate Delivery Order"/>
                        <button name="ship_corrected" states="shipping_except" string="Ignore Exception"/>
                    </xpath>
+                   <xpath expr="//button[@name='action_run_scheduler']" position="attributes">
+                       <attribute name="groups">stock.group_stock_manager</attribute>
+                       <attribute name="attrs">{'invisible': ['|',('state','in',['draft','sent','cancel','done']),('shipped','=',True)]}</attribute>
+                   </xpath>
                    <xpath expr="//button[@name='action_view_invoice']" position="after">
                        <field name="picking_ids" invisible="1"/>
                        <button name="action_view_delivery" string="View Delivery Order" type="object" class="oe_highlight"

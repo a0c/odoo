@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+
+        <!--  Run Schedulers -->
+        <act_window name="Run Schedulers"
+                    res_model="procurement.order.compute.all"
+                    src_model="sale.order"
+                    view_mode="form"
+                    multi="True"
+                    target="new"
+                    key2="client_action_multi"
+                    id="action_compute_schedulers"/>
+
+    </data>
+</openerp>

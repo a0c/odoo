@@ -82,6 +82,8 @@
                         <button name="print_quotation" string="Print" type="object" states="sent,progress,manual" groups="base.group_user"/>
                         <button name="action_button_confirm" states="draft" string="Confirm Sale" type="object" groups="base.group_user"/>
                         <button name="action_button_confirm" states="sent" string="Confirm Sale" class="oe_highlight" type="object" groups="base.group_user"/>
+                        <button name="action_run_scheduler" string="Run Scheduler" type="object" groups="base.group_user"
+                            attrs="{'invisible': [('state','in',['draft','sent','cancel','done'])]}"/>
                         <button name="action_view_invoice" string="View Invoice" type="object" class="oe_highlight"
                             attrs="{'invisible': [('invoice_exists', '=', False)]}" groups="base.group_user"/>
                         <button name="%(action_view_sale_advance_payment_inv)d" string="Create Invoice"
