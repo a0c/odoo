@@ -4229,8 +4229,12 @@ class stock_warehouse_orderpoint(osv.osv):
         '''
         qty = 0
         uom_obj = self.pool.get("product.uom")
+        selected_procs = context and self.pool.get('procurement.order')._selected_procurements(context)
         for procurement in orderpoint.procurement_ids:
             if procurement.state in ('cancel', 'done'):
+                continue
+            # when running only selected procurements, forget about the rest in orderpoint computation
+            if selected_procs and procurement.id not in selected_procs:
                 continue
             procurement_qty = uom_obj._compute_qty_obj(cr, uid, procurement.product_uom, procurement.product_qty, procurement.product_id.uom_id, context=context)
             for move in procurement.move_ids:

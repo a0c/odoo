@@ -311,7 +311,7 @@ class procurement_order(osv.osv):
                 dom += [('company_id', '=', company_id)]
             prev_ids = []
             while True:
-                ids = self.search(cr, SUPERUSER_ID, dom, context=context)
+                ids = self.get_run_ids(cr, dom, context)
                 if not ids or prev_ids == ids:
                     break
                 else:
@@ -327,7 +327,7 @@ class procurement_order(osv.osv):
                 dom += [('company_id', '=', company_id)]
             prev_ids = []
             while True:
-                ids = self.search(cr, SUPERUSER_ID, dom, offset=offset, context=context)
+                ids = self.get_run_ids(cr, dom, context, offset=offset)
                 if not ids or prev_ids == ids:
                     break
                 else:
@@ -344,4 +344,13 @@ class procurement_order(osv.osv):
                     pass
 
         return {}
+
+    def get_run_ids(self, cr, dom, context, offset=0):
+        selected = self._selected_procurements(context)
+        if selected:
+            dom = dom + [('id', 'in', selected)]
+        return self.search(cr, SUPERUSER_ID, dom, offset=offset, context=context)
+
+    def _selected_procurements(self, context):
+        return context.get('active_model') == 'procurement.order' and context.get('active_ids', []) or []
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
