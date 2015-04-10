@@ -263,21 +263,21 @@ class procurement_order(osv.osv):
         return [move.id for move in move_obj.browse(cr, uid, waiting_ids) if move_obj._is_unreserved_MTO_move_changed_to_MTS(cr, uid, move)]
 
     def _selected_products(self, cr, uid, context):
-        selected = self._selected_procurements(context)
+        selected = self._selected_procurements(cr, uid, context)
         return list(set(x['product_id'][0] for x in self.read(cr, uid, selected, ['product_id'])))
 
     def _selected_product_domain(self, cr, uid, context):
         selected_prods = self._selected_products(cr, uid, context)
         return selected_prods and [('product_id', 'in', selected_prods)] or []
 
-    def _selected_move_in_domain(self, context):
+    def _selected_move_in_domain(self, cr, uid, context):
         # only selected moves (MTO) and unreserved moves (standalone PO) treated as incoming moves in virtual quantity
-        selected = self._selected_procurements(context)
+        selected = self._selected_procurements(cr, uid, context)
         return selected and [('procurement_id', 'in', selected + [False])] or []
 
-    def _selected_move_out_domain(self, context):
+    def _selected_move_out_domain(self, cr, uid, context):
         # only selected non-MTO moves treated as outgoing moves in virtual quantity when procuring on orderpoint
-        selected = self._selected_procurements(context)
+        selected = self._selected_procurements(cr, uid, context)
         return selected and [('procurement_id', 'in', selected), ('procure_method', '=', 'make_to_stock')] or []
 
     def _selected_quant_domain(self, cr, uid, context):
@@ -285,7 +285,7 @@ class procurement_order(osv.osv):
         return selected_moves and [('reservation_id', 'in', selected_moves + [False])] or []
 
     def _selected_moves(self, cr, uid, context):
-        selected = self._selected_procurements(context)
+        selected = self._selected_procurements(cr, uid, context)
         return reduce(lambda x, y: x + y['move_ids'], self.read(cr, uid, selected, ['move_ids']), [])
 
     def _selected_origin(self, cr, uid, context):
@@ -294,7 +294,7 @@ class procurement_order(osv.osv):
         return selected and ','.join(origins) + ':' or ''
 
     def _selected_move_dest_id(self, cr, uid, product_id, context):
-        selected = self._selected_procurements(context)
+        selected = self._selected_procurements(cr, uid, context)
         moves = [x.move_ids[0].id for x in self.browse(cr, uid, selected) if x.product_id.id == product_id and not x.move_dest_id]
         return len(moves) == 1 and moves[0]  # dest is only possible when no more than 1 order line requested the product
 
@@ -326,7 +326,7 @@ class procurement_order(osv.osv):
             self._procure_orderpoint_confirm(cr, SUPERUSER_ID, use_new_cursor=use_new_cursor, company_id=company_id, context=context)
 
             #Search all confirmed stock_moves and try to assign them
-            selected_move_out = self._selected_move_out_domain(context)
+            selected_move_out = self._selected_move_out_domain(cr, uid, context)
             confirmed_ids = move_obj.search(cr, uid, [('state', '=', 'confirmed')] + selected_move_out, limit=None, order='priority desc, date_expected asc', context=context)
             for x in xrange(0, len(confirmed_ids), 100):
                 move_obj.action_assign(cr, uid, confirmed_ids[x:x + 100], context=context)
@@ -395,8 +395,8 @@ class procurement_order(osv.osv):
         orderpoint_obj = self.pool.get('stock.warehouse.orderpoint')
 
         selected_products = self._selected_product_domain(cr, uid, context)
-        selected_move_in = self._selected_move_in_domain(context)
-        selected_move_out = self._selected_move_out_domain(context)
+        selected_move_in = self._selected_move_in_domain(cr, uid, context)
+        selected_move_out = self._selected_move_out_domain(cr, uid, context)
         selected_quant = self._selected_quant_domain(cr, uid, context)
 
         procurement_obj = self.pool.get('procurement.order')

@@ -773,9 +773,12 @@ class sale_order(osv.osv):
                 order.write(val)
         return True
 
+    def _active_procurements(self, cr, uid, ids, context):
+        return [p.id for order in self.browse(cr, uid, ids, context=context)
+                for p in order.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
+
     def _scheduler_context(self, cr, uid, ids, context):
-        procs = [p.id for order in self.browse(cr, uid, ids, context=context)
-                 for p in order.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
+        procs = self._active_procurements(cr, uid, ids, context)
         return procs and dict(context or {}, active_model='procurement.order', active_ids=procs, active_id=procs[0] or 0) or False
 
     def action_run_scheduler(self, cr, uid, ids, context=None):
@@ -1321,6 +1324,13 @@ class procurement_order(osv.osv):
                         workflow.trg_validate(uid, 'sale.order', order_id, 'ship_end', cr)
                     if self.pool.get('sale.order').test_procurements_except(cr, uid, [order_id], context=context):
                         workflow.trg_validate(uid, 'sale.order', order_id, 'ship_except', cr)
+        return res
+
+    def _selected_procurements(self, cr, uid, context):
+        res = super(procurement_order, self)._selected_procurements(cr, uid, context)
+        if not res:
+            if context.get('active_model') == 'sale.order' and context.get('active_ids', []):
+                res = self.pool.get('sale.order')._active_procurements(cr, uid, context['active_ids'], context)
         return res
 
 class product_product(osv.Model):

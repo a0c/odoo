@@ -26,12 +26,22 @@ from openerp import tools
 
 from openerp.osv import osv
 from openerp.api import Environment
+from openerp.tools.translate import _
+from openerp import fields
 
 _logger = logging.getLogger(__name__)
 
 class procurement_compute_all(osv.osv_memory):
     _name = 'procurement.order.compute.all'
     _description = 'Compute all schedulers'
+
+    def _default_proc_count(self):
+        if 'active_model' in self._context:
+            count = len(self.env['procurement.order']._selected_procurements())
+            return _('Compute %s procurement(s) in the background.') % count
+        return _('Compute all procurements in the background.')
+
+    procurements_count = fields.Char('Selected Procurements', compute=lambda *a: {}, default=_default_proc_count)
 
     def _procure_calculation_all(self, cr, uid, ids, context=None):
         """

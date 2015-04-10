@@ -346,11 +346,11 @@ class procurement_order(osv.osv):
         return {}
 
     def get_run_ids(self, cr, dom, context, offset=0):
-        selected = self._selected_procurements(context)
+        selected = self._selected_procurements(cr, SUPERUSER_ID, context)
         if selected:
             dom = dom + [('id', 'in', selected)]
         return self.search(cr, SUPERUSER_ID, dom, offset=offset, context=context)
 
-    def _selected_procurements(self, context):
+    def _selected_procurements(self, cr, uid, context):
         return context.get('active_model') == 'procurement.order' and context.get('active_ids', []) or []
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
