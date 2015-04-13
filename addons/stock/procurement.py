@@ -293,11 +293,6 @@ class procurement_order(osv.osv):
         origins = sorted(set(proc['origin'].split(':')[0] for proc in self.read(cr, uid, selected, ['origin'])))
         return selected and ','.join(origins) + ':' or ''
 
-    def _selected_move_dest_id(self, cr, uid, product_id, context):
-        selected = self._selected_procurements(cr, uid, context)
-        moves = [x.move_ids[0].id for x in self.browse(cr, uid, selected) if x.product_id.id == product_id and not x.move_dest_id]
-        return len(moves) == 1 and moves[0]  # dest is only possible when no more than 1 order line requested the product
-
     def run_scheduler(self, cr, uid, use_new_cursor=False, company_id=False, context=None):
         '''
         Call the scheduler in order to check the running procurements (super method), to check the minimum stock rules
@@ -340,6 +335,8 @@ class procurement_order(osv.osv):
                 if use_new_cursor:
                     cr.commit()
 
+            #Link created orderpoint procurements (if any) to stock_moves that are still waiting for them after assigning
+            self._link_orderpoint_procurements_to_moves(cr, uid, move_obj, confirmed_ids, context)
             if use_new_cursor:
                 cr.commit()
         finally:
@@ -356,7 +353,6 @@ class procurement_order(osv.osv):
 
     def _prepare_orderpoint_procurement(self, cr, uid, orderpoint, product_qty, context=None):
         selected_origin = self._selected_origin(cr, uid, context)
-        selected_move_dest_id = self._selected_move_dest_id(cr, uid, orderpoint.product_id.id, context)
         return {
             'name': selected_origin + orderpoint.name,
             'date_planned': self._get_orderpoint_date_planned(cr, uid, orderpoint, datetime.today(), context=context),
@@ -369,7 +365,6 @@ class procurement_order(osv.osv):
             'warehouse_id': orderpoint.warehouse_id.id,
             'orderpoint_id': orderpoint.id,
             'group_id': orderpoint.group_id.id,
-            'move_dest_id': selected_move_dest_id,  # set dest so that dest gets assigned when this proc's move is done
         }
 
     def _product_virtual_get(self, cr, uid, order_point, selected_move_in, selected_move_out, selected_quant):
@@ -404,6 +399,7 @@ class procurement_order(osv.osv):
         dom += selected_products
         orderpoint_ids = orderpoint_obj.search(cr, uid, dom)
         prev_ids = []
+        context['new_orderpoint_procurements'] = {}
         while orderpoint_ids:
             ids = orderpoint_ids[:100]
             del orderpoint_ids[:100]
@@ -430,6 +426,7 @@ class procurement_order(osv.osv):
                                                              context=context)
                             self.check(cr, uid, [proc_id], context=context)
                             self.run(cr, uid, [proc_id], context=context)
+                            context['new_orderpoint_procurements'][op.product_id.id] = proc_id
                     if use_new_cursor:
                         cr.commit()
                 except OperationalError:
@@ -450,3 +447,11 @@ class procurement_order(osv.osv):
             cr.commit()
             cr.close()
         return {}
+
+    def _link_orderpoint_procurements_to_moves(self, cr, uid, move_obj, moves_out, context):
+        if not self._selected_procurements(cr, uid, context):
+            return
+        for out_move in move_obj.browse(cr, uid, moves_out):
+            # successfully assigned moves didn't contribute to orderpoint procurements
+            if out_move.state != 'assigned' and not out_move.procurement_id.procurement_id:
+                out_move.procurement_id.write({'procurement_id': context['new_orderpoint_procurements'][out_move.product_id.id]})

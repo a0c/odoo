@@ -129,6 +129,10 @@ class procurement_order(osv.osv):
         'product_uos_qty': fields.float('UoS Quantity', states={'confirmed': [('readonly', False)]}, readonly=True),
         'product_uos': fields.many2one('product.uom', 'Product UoS', states={'confirmed': [('readonly', False)]}, readonly=True),
 
+        # Fields denoting an Orderpoint Procurement, used when scheduling only selected procurements
+        'procurement_id': fields.many2one('procurement.order', 'Procurement', help="Orderpoint Procurement created by this Procurement"),
+        'procurement_dest_ids': fields.one2many('procurement.order', 'procurement_id', 'Destination Procurements', help="Procurements which caused (created) this Orderpoint Procurement"),
+
         'state': fields.selection([
             ('cancel', 'Cancelled'),
             ('confirmed', 'Confirmed'),
@@ -306,7 +310,8 @@ class procurement_order(osv.osv):
                 cr = openerp.registry(cr.dbname).cursor()
 
             # Run confirmed procurements
-            dom = [('state', '=', 'confirmed')]
+            selected = self._selected_procurements(cr, SUPERUSER_ID, context)
+            dom = [('state', 'in', selected and ('confirmed', 'exception') or ('confirmed',))]
             if company_id:
                 dom += [('company_id', '=', company_id)]
             prev_ids = []

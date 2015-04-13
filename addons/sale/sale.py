@@ -774,8 +774,12 @@ class sale_order(osv.osv):
         return True
 
     def _active_procurements(self, cr, uid, ids, context):
-        return [p.id for order in self.browse(cr, uid, ids, context=context)
-                for p in order.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
+        # the only way to grab also the orderpoint procurements of selected sale orders is to track
+        # orderpoint procurements upon creation inside procurement_id field of triggering procurement
+        procs = [p.procurement_id and p.procurement_id.state not in ['done', 'cancel'] and [p.id, p.procurement_id.id] or [p.id]
+                 for order in self.browse(cr, uid, ids, context=context)
+                 for p in order.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
+        return list(set(proc for l in procs for proc in l))
 
     def _scheduler_context(self, cr, uid, ids, context):
         procs = self._active_procurements(cr, uid, ids, context)

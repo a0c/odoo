@@ -736,6 +736,11 @@ class purchase_order(osv.osv):
         self.signal_workflow(cr, uid, ids, 'purchase_cancel')
         return True
 
+    def _ensure_positive(self, order_line, *quantities):
+        for qty in quantities:
+            assert float_compare(qty, 0.0, precision_rounding=order_line.product_uom.rounding) > 0,\
+                'About to create a Phantom incoming move (qty == %s, product = %s)' % (qty, order_line.product_id.id)
+
     def _prepare_order_line_move(self, cr, uid, order, order_line, picking_id, group_id, context=None):
         ''' prepare the stock move data from the PO line. This function returns a list of dictionary ready to be used in stock.move's create()'''
         product_uom = self.pool.get('product.uom')
@@ -773,6 +778,27 @@ class purchase_order(osv.osv):
 
         diff_quantity = order_line.product_qty
         for procurement in order_line.procurement_ids:
+            # if it is an orderpoint proc., create moves for every proc. that caused this orderpoint proc.
+            if procurement.procurement_dest_ids:
+                for dest_procurement in procurement.procurement_dest_ids:
+                    qty_left = reduce(lambda x, y: x + y, [m.product_qty - m.reserved_availability for m in dest_procurement.move_ids if m.state in ('confirmed', 'waiting')], 0)
+                    self._ensure_positive(order_line, qty_left, diff_quantity)
+                    procurement_qty = product_uom._compute_qty(cr, uid, dest_procurement.product_uom.id, qty_left, to_uom_id=order_line.product_uom.id)
+                    move_dest_id = [m.id for m in dest_procurement.move_ids if m.state in ('confirmed', 'waiting')]
+                    tmp = move_template.copy()
+                    tmp.update({
+                        'product_uom_qty': min(procurement_qty, diff_quantity),
+                        'product_uos_qty': min(procurement_qty, diff_quantity),
+                        'move_dest_id': move_dest_id and move_dest_id[0] or False,  # chain temporarily: set dest so that dest gets assigned when this incoming move is done
+                        'group_id': procurement.group_id.id or group_id,  #move group is same as group of procurements if it exists, otherwise take another group
+                        'procurement_id': procurement.id,
+                        'invoice_state': procurement.rule_id.invoice_state or (procurement.location_id and procurement.location_id.usage == 'customer' and procurement.invoice_state=='2binvoiced' and '2binvoiced') or (order.invoice_method == 'picking' and '2binvoiced') or 'none', #dropship case takes from sale
+                        'propagate': procurement.rule_id.propagate,
+                    })
+                    diff_quantity -= min(procurement_qty, diff_quantity)
+                    res.append(tmp)
+                continue
+            self._ensure_positive(order_line, diff_quantity)
             procurement_qty = product_uom._compute_qty(cr, uid, procurement.product_uom.id, procurement.product_qty, to_uom_id=order_line.product_uom.id)
             tmp = move_template.copy()
             tmp.update({

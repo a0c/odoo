@@ -1892,6 +1892,7 @@ class stock_move(osv.osv):
         for move in self.browse(cr, uid, move_ids, context=context):
             if move.state in ('done', 'cancel'):
                 raise osv.except_osv(_('Operation Forbidden!'), _('Cannot unreserve a done move'))
+            move._unchain()
             quant_obj.quants_unreserve(cr, uid, move, context=context)
             if self.find_move_ancestors(cr, uid, move, context=context):
                 self.write(cr, uid, [move.id], {'state': 'waiting'}, context=context)
@@ -2392,6 +2393,24 @@ class stock_move(osv.osv):
             if vals:
                 self.write(cr, uid, [move.id], vals, context=context)
 
+    @api.one
+    def _unchain(self):
+        """ Unchain if temporarily chained """
+        if self.move_dest_id:
+            return
+        is_MTS = self.procure_method == 'make_to_stock'
+        triggered_orderpoint = self.procurement_id and self.procurement_id.procurement_id
+        is_temporarily_chained = is_MTS and triggered_orderpoint
+        if is_temporarily_chained:
+            self.move_orig_ids.write({'move_dest_id': False})
+
+    def _is_temporarily_chained_move(self, move):
+        if not move.move_dest_id:
+            return False
+        dest_is_MTS = move.move_dest_id.procure_method == 'make_to_stock'
+        dest_triggered_orderpoint = move.move_dest_id.procurement_id and move.move_dest_id.procurement_id.procurement_id
+        return dest_is_MTS and dest_triggered_orderpoint
+
     def action_done(self, cr, uid, ids, context=None):
         """ Process completely the moves given as ids and if all moves are done, it will finish the picking.
         """
@@ -2448,6 +2467,7 @@ class stock_move(osv.osv):
                 move_qty[move.id] -= record.qty
         #Check for remaining qtys and unreserve/check move_dest_id in
         move_dest_ids = set()
+        temporarily_chained = set()
         for move in self.browse(cr, uid, ids, context=context):
             move_qty_cmp = float_compare(move_qty[move.id], 0, precision_rounding=move.product_id.uom_id.rounding)
             if move_qty_cmp > 0:  # (=In case no pack operations in picking)
@@ -2465,6 +2485,11 @@ class stock_move(osv.osv):
             if move.move_dest_id and move.move_dest_id.state in ('waiting', 'confirmed'):
                 move_dest_ids.add(move.move_dest_id.id)
 
+            # If the move was temporarily chained (for auto-assigning when scheduling selected procurements),
+            # cut the chain (so as to mute quant's history) to allow further unreserving/rereserving if needed
+            if self._is_temporarily_chained_move(move):
+                temporarily_chained.add(move.id)
+
             if move.procurement_id:
                 procurement_ids.add(move.procurement_id.id)
 
@@ -2478,6 +2503,9 @@ class stock_move(osv.osv):
         #assign destination moves
         if move_dest_ids:
             self.action_assign(cr, uid, list(move_dest_ids), context=context)
+        #drop temporary destinations (after assigning them!), so that dest moves return to a normal non-chained MTS state
+        if temporarily_chained:
+            self.write(cr, uid, list(temporarily_chained), {'move_dest_id': False}, context=context)
         #check picking state to set the date_done is needed
         done_picking = []
         for picking in picking_obj.browse(cr, uid, list(pickings), context=context):
