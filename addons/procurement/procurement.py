@@ -353,9 +353,31 @@ class procurement_order(osv.osv):
     def get_run_ids(self, cr, dom, context, offset=0):
         selected = self._selected_procurements(cr, SUPERUSER_ID, context)
         if selected:
+            selected = self._explode_selected_procurements(cr, SUPERUSER_ID, selected, context)
             dom = dom + [('id', 'in', selected)]
         return self.search(cr, SUPERUSER_ID, dom, offset=offset, context=context)
 
     def _selected_procurements(self, cr, uid, context):
-        return context.get('active_model') == 'procurement.order' and context.get('active_ids', []) or []
+        """ Selected procurements are used to limit the range of procurements scheduler operates on.
+        Only these procurements are scheduled, only their products are reordered (if needed), only their moves are
+        analyzed in virtual quantities. Normally these procurements get temporarily chained."""
+        res = context.get('selected_procurements')
+        if res:
+            return res
+        res = context.get('active_model') == 'procurement.order' and context.get('active_ids', []) or []
+        self.cache_selected_procurements(res, context)
+        return res
+
+    def cache_selected_procurements(self, res, context):
+        """ cache selected_procurements to use it further on, otherwise selected_procurements may grow during scheduler run """
+        if not isinstance(context, openerp.tools.frozendict):
+            context['selected_procurements'] = res
+
+    def _explode_selected_procurements(self, cr, uid, selected_procurements, context):
+        """ Can be overriden to extend procurement selection (e.g. to grab resupplying procs during manufacturing)
+        when running/checking procurements (but not when scheduling them! it's not the same as _selected_procurements()
+        used for assigning/orderpoint calculation).
+        Procurement selection is returned here as is, cos procurement-wise selection should not be compromised/exploded.
+        Should be overriden when scheduling higher order entities (sale order, manufacturing order etc). """
+        return list(selected_procurements)
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

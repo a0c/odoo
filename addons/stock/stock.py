@@ -1811,6 +1811,7 @@ class stock_move(osv.osv):
         'remaining_qty': fields.function(_get_remaining_qty, type='float', string='Remaining Quantity', digits=0,
                                          states={'done': [('readonly', True)]}, help="Remaining Quantity in default UoM according to operations matched with this move"),
         'procurement_id': fields.many2one('procurement.order', 'Procurement'),
+        'procurement_ids': fields.many2many('procurement.order', 'procurement_stock_move_rel', 'move_id', 'procurement_id', 'Created Procurements', help='Procurement created by this move (e.g. during resupply for manufacturing).'),
         'group_id': fields.many2one('procurement.group', 'Procurement Group'),
         'rule_id': fields.many2one('procurement.rule', 'Procurement Rule', help='The pull rule that created this stock move'),
         'push_rule_id': fields.many2one('stock.location.path', 'Push Rule', help='The push rule that created this stock move'),
@@ -2396,19 +2397,30 @@ class stock_move(osv.osv):
     @api.one
     def _unchain(self):
         """ Unchain if temporarily chained """
+        # E.g. proc for 5: 2 in stock -> so reserved at once; 3 ordered and chained. If we now unreserve first 2 items,
+        # we won't be able to reserve anything until chained moves have arrived and have cut the temporary chain (may
+        # never happen). So we better cut the chain at once, just in case, cos we don't know for sure what will happen
+        # in future. todo: create a test for it.
         if self.move_dest_id:
             return
         is_MTS = self.procure_method == 'make_to_stock'
-        triggered_orderpoint = self.procurement_id and self.procurement_id.procurement_id
+        triggered_orderpoint = self.procurement_id and self.procurement_id.procurement_id or self.procurement_ids
         is_temporarily_chained = is_MTS and triggered_orderpoint
         if is_temporarily_chained:
-            self.move_orig_ids.write({'move_dest_id': False})
+            self.move_orig_ids.drop_temporary_chain()
+
+    @api.multi
+    def drop_temporary_chain(self):
+        """ Cut the chain to effectively mute quant's history, so as to allow further unreserving/rereserving if needed.
+        Moves are returned to a normal non-chained MTS state. """
+        self and self.write({'move_dest_id': False})
 
     def _is_temporarily_chained_move(self, move):
+        """ triggered orderpoint is registered inside procurement_id.procurement_id only if we run scheduler selectively """
         if not move.move_dest_id:
             return False
         dest_is_MTS = move.move_dest_id.procure_method == 'make_to_stock'
-        dest_triggered_orderpoint = move.move_dest_id.procurement_id and move.move_dest_id.procurement_id.procurement_id
+        dest_triggered_orderpoint = move.move_dest_id.procurement_id and move.move_dest_id.procurement_id.procurement_id or move.move_dest_id.procurement_ids
         return dest_is_MTS and dest_triggered_orderpoint
 
     def action_done(self, cr, uid, ids, context=None):
@@ -2504,8 +2516,7 @@ class stock_move(osv.osv):
         if move_dest_ids:
             self.action_assign(cr, uid, list(move_dest_ids), context=context)
         #drop temporary destinations (after assigning them!), so that dest moves return to a normal non-chained MTS state
-        if temporarily_chained:
-            self.write(cr, uid, list(temporarily_chained), {'move_dest_id': False}, context=context)
+        self.drop_temporary_chain(cr, uid, list(temporarily_chained), context=context)
         #check picking state to set the date_done is needed
         done_picking = []
         for picking in picking_obj.browse(cr, uid, list(pickings), context=context):

@@ -773,21 +773,24 @@ class sale_order(osv.osv):
                 order.write(val)
         return True
 
-    def _active_procurements(self, cr, uid, ids, context):
-        # the only way to grab also the orderpoint procurements of selected sale orders is to track
-        # orderpoint procurements upon creation inside procurement_id field of triggering procurement
-        procs = [p.procurement_id and p.procurement_id.state not in ['done', 'cancel'] and [p.id, p.procurement_id.id] or [p.id]
-                 for order in self.browse(cr, uid, ids, context=context)
-                 for p in order.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
-        return list(set(proc for l in procs for proc in l))
+    def _is_running_scheduler_for_SO(self, cr, uid, context):
+        return context.get('active_model') == 'sale.order' and 'active_ids' in context
+
+    def _has_active_procurements(self, cr, uid, ids, context):
+        if context.get('active_model') != 'sale.order':
+            context.update(active_model='sale.order', active_ids=ids, active_id=ids[0] or 0)
+        active_procurements = self.pool.get('procurement.order')._selected_procurements(cr, uid, context)
+        return bool(active_procurements)
 
     def _scheduler_context(self, cr, uid, ids, context):
         procs = self._active_procurements(cr, uid, ids, context)
         return procs and dict(context or {}, active_model='procurement.order', active_ids=procs, active_id=procs[0] or 0) or False
 
     def action_run_scheduler(self, cr, uid, ids, context=None):
-        ctx = self._scheduler_context(cr, uid, ids, context)
-        return ctx and {
+        # should not allow scheduler to run for SOs with no active procurements, cos it would switch to
+        # normal mode (non-selective) and would run for all existing procurements
+        ctx = context is not None and context or {}
+        return self._has_active_procurements(cr, uid, ids, ctx) and {
             'name': _('Run Schedulers'),
             'view_mode': 'form',
             'view_type': 'form',
@@ -1333,8 +1336,15 @@ class procurement_order(osv.osv):
     def _selected_procurements(self, cr, uid, context):
         res = super(procurement_order, self)._selected_procurements(cr, uid, context)
         if not res:
-            if context.get('active_model') == 'sale.order' and context.get('active_ids', []):
-                res = self.pool.get('sale.order')._active_procurements(cr, uid, context['active_ids'], context)
+            sale_obj = self.pool.get('sale.order')
+            if sale_obj._is_running_scheduler_for_SO(cr, uid, context):
+                # the only way to grab also the orderpoint procurements of selected sale orders is to track
+                # orderpoint procurements upon creation inside procurement_id field of triggering procurement
+                active = [p.procurement_id and p.procurement_id.state not in ['done', 'cancel'] and [p.id, p.procurement_id.id] or [p.id]
+                          for sale in sale_obj.browse(cr, uid, context['active_ids'], context=context)
+                          for p in sale.procurement_group_id.procurement_ids if p.state not in ['done', 'cancel']]
+                res = list(set(proc for lst in active for proc in lst))
+                self.cache_selected_procurements(res, context)
         return res
 
 class product_product(osv.Model):

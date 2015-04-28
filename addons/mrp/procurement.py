@@ -25,6 +25,7 @@ from openerp.osv import osv, fields
 from openerp.tools.translate import _
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from openerp import SUPERUSER_ID
+import openerp
 
 class procurement_rule(osv.osv):
     _inherit = 'procurement.rule'
@@ -122,6 +123,7 @@ class procurement_order(osv.osv):
                 self.production_order_create_note(cr, uid, procurement, context=context)
                 production_obj.action_compute(cr, uid, [produce_id], properties=[x.id for x in procurement.property_ids])
                 production_obj.signal_workflow(cr, uid, [produce_id], 'button_confirm')
+                procurement._chain_moves_produced()
             else:
                 res[procurement.id] = False
                 self.message_post(cr, uid, [procurement.id], body=_("No BoM exists for this product!"), context=context)
@@ -131,5 +133,169 @@ class procurement_order(osv.osv):
         body = _("Manufacturing Order <em>%s</em> created.") % (procurement.production_id.name,)
         self.message_post(cr, uid, [procurement.id], body=body, context=context)
 
+    ############################
+    ##   Selective Scheduler   #
+    ############################
 
+    def _filter_MO_procs_obj(self, cr, uid, ids, context):
+        return [proc for proc in self.browse(cr, uid, ids, context=context) if proc.production_id]
+
+    def _filter_MO_procs(self, cr, uid, ids, context):
+        return [p.id for p in self._filter_MO_procs_obj(cr, uid, ids, context)]
+
+    def _explode_selected_procurements(self, cr, uid, selected_procurements, context):
+        """ Grab resupplying procs created during manufacturing """
+        res = super(procurement_order, self)._explode_selected_procurements(cr, uid, selected_procurements, context)
+        consumed_product_procs = self._get_consumed_product_procs(cr, uid, res, context)
+        return res + consumed_product_procs
+
+    def _get_consumed_product_procs(self, cr, uid, ids, context):
+        res = []
+        procs_MO = self._filter_MO_procs_obj(cr, uid, ids, context)
+        while procs_MO:
+            consumed_product_procs = [p for proc in procs_MO for m in proc.production_id.move_lines for p in m.procurement_ids]
+            res.extend(p.id for p in consumed_product_procs)
+            procs_MO = [proc for proc in consumed_product_procs if proc.production_id]
+        return res
+
+    def _get_consumed_moves(self, cr, uid, ids, context):
+        res = []
+        procs_MO = self._filter_MO_procs_obj(cr, uid, ids, context)
+        while procs_MO:
+            consumed_moves = [m for proc in procs_MO for m in proc.production_id.move_lines]
+            res.extend(consumed_moves)
+            procs_MO = [p for m in consumed_moves for p in m.procurement_ids if p.production_id]
+        return res
+
+    def run_scheduler(self, cr, uid, use_new_cursor=False, company_id=False, context=None):
+        """ Procure MOs automatically (if any) when running scheduler selectively.
+
+        To temporarily chain moves produced by MOs, we:
+        (1) run orderpoint rules (to create & confirm MOs) => (2) assign what is available =>
+        (3) link the rest (unassigned) to created MOs => (4) chain produced moves now that we now the linked moves.
+
+        Thus, chaining happens only after MO is confirmed (moves are created) in step (1)
+        and unassigned moves are linked to MO (3).
+        While step (3) will always succeed (we link to procurements of MOs, not to MOs themselves),
+        step (1) may fail because of exceptions during MO creation, which will cause step (4) to fail too, cos
+        no moves would've been created and no moves could be chained. Since step (3) will always succeed, the linkage
+        will be created and we just need to run chaining immediately after MO creation (in case user fixes exceptions
+        and re-runs selective scheduler). Previously created linkage will chain moves, while normally nothing will happen
+        when chaining immediately after MO creation (as no linkage would exist by that time).
+
+        Because of possible exceptions and to maintain consumed_product_procs properly for the whole lifetime of the proc,
+        we only drop links after procurement is done/cancelled and not immediately after moves have been chained. While
+        the chain itself is cut right after it has been triggered (moves received/produced and reserved).
+        """
+        context = {} if context is None else context
+        super(procurement_order, self).run_scheduler(cr, uid, use_new_cursor=use_new_cursor, company_id=company_id, context=context)
+
+        selected = self._selected_procurements(cr, uid, context)
+        if not selected:
+            return {}
+        try:
+            if use_new_cursor:
+                cr = openerp.registry(cr.dbname).cursor()
+
+            procs_MO = self._filter_MO_procs(cr, uid, selected, context)
+            ctx = context
+
+            while True:
+                new_procs = ctx.get('new_orderpoint_procurements', {}).values()
+                procs_MO.extend(self._filter_MO_procs(cr, uid, new_procs, context))
+                if not procs_MO:
+                    break
+
+                # Minimum stock rules for consumed products
+                consumed_procs = self._get_consumed_product_procs(cr, uid, procs_MO, context) or [0]  # when calling subtract_procurements(), only consumed_product_procs should be subtracted
+                consumed_moves = self._get_consumed_moves(cr, uid, procs_MO, context)
+                if not consumed_moves:
+                    break
+                # enable consumed_moves flow
+                ctx = dict(ctx, consumed_moves=consumed_moves, new_orderpoint_procurements={}, selected_procurements=consumed_procs)
+                self._procure_orderpoint_confirm(cr, SUPERUSER_ID, use_new_cursor=use_new_cursor, company_id=company_id, context=ctx)
+
+                # Try to assign consumed moves
+                self.pool.get('stock.move').action_assign(cr, uid, [m.id for m in consumed_moves], context=ctx)
+                if use_new_cursor:
+                    cr.commit()
+
+                #Link created orderpoint procurements (if any) to consumed stock_moves that are still waiting for them after assigning
+                self._link_orderpoint_procurements_to_consumed_moves(cr, uid, consumed_moves, ctx)
+                if use_new_cursor:
+                    cr.commit()
+
+                self._chain_moves_produced(cr, uid, [], ctx)
+                if use_new_cursor:
+                    cr.commit()
+
+                procs_MO = []
+        finally:
+            if use_new_cursor:
+                try:
+                    cr.close()
+                except Exception:
+                    pass
+        return {}
+
+    def _consumed_moves(self, context):
+        return context.get('consumed_moves', [])
+
+    def _selected_product_domain(self, cr, uid, context):
+        """ All consumed products should be replenished if needed (and only consumed products) """
+        consumed_moves = self._consumed_moves(context)
+        if consumed_moves:
+            consumed_products = [m.product_id.id for m in consumed_moves]
+            return [('product_id', 'in', list(set(consumed_products)))]
+        return super(procurement_order, self)._selected_product_domain(cr, uid, context)
+
+    def _selected_move_out_domain(self, cr, uid, context):
+        """ All consumed moves are treated as outgoing => their products should be replenished if needed """
+        consumed_moves = self._consumed_moves(context)
+        if consumed_moves:
+            assert all(m.procure_method == 'make_to_stock' for m in consumed_moves), 'Sorry, MTO in BoM is currently not supported in selective scheduler'  # TODO is it possible at all? if not - remove assertion
+            return [('id', 'in', [m.id for m in consumed_moves])]
+        return super(procurement_order, self)._selected_move_out_domain(cr, uid, context)
+
+    def _selected_moves(self, cr, uid, context):
+        """ Only quants reserved for consumed moves should be accepted """
+        consumed_moves = self._consumed_moves(context)
+        if consumed_moves:
+            return [m.id for m in consumed_moves]
+        return super(procurement_order, self)._selected_moves(cr, uid, context)
+
+    def _extract_origins(self, cr, uid, context):
+        consumed_moves = self._consumed_moves(context)
+        if consumed_moves:
+            return [m.raw_material_production_id.origin for m in consumed_moves]
+        return super(procurement_order, self)._extract_origins(cr, uid, context)
+
+    def _link_orderpoint_procurements_to_consumed_moves(self, cr, uid, consumed_moves, context):
+        for consumed_move in consumed_moves:
+            # successfully assigned moves didn't contribute to orderpoint procurements
+            if consumed_move.state != 'assigned':
+                new_proc = context['new_orderpoint_procurements'].get(consumed_move.product_id.id, False)
+                if new_proc and not consumed_move.procurement_ids:  # only link consumed move once
+                    self.write(cr, uid, new_proc, {'move_dest_ids': [(4, consumed_move.id, False)]})
+
+    def _link_orderpoint_procurements_to_moves(self, cr, uid, move_obj, moves_out, context):
+        super(procurement_order, self)._link_orderpoint_procurements_to_moves(cr, uid, move_obj, moves_out, context)
+        self._chain_moves_produced(cr, uid, [], context)
+
+    def _chain_moves_produced(self, cr, uid, ids, context):
+        """ If production procurement was triggered by several dest procurements/moves,
+         we need to split produced moves and assign a dedicated move_dest_id to each of them."""
+        move_obj = self.pool.get('stock.move')
+        if not ids:
+            ids = context.get('new_orderpoint_procurements', {}).values()
+        procs_MO = [proc for proc in self.browse(cr, uid, ids, context) if proc.production_id and (proc.procurement_dest_ids or proc.move_dest_ids)]  # procurement_dest_ids or move_dest_ids are set by selective scheduler only => no need to check if we're running selective scheduler
+        for proc_MO in procs_MO:
+            for produce_product in proc_MO.production_id.move_created_ids:
+                if not produce_product.move_dest_id:  # MTO moves are already chained - skip them
+                    # temporarily chain
+                    diff_quantity, dest_moves = proc_MO._prepare_dest_procurement_moves(proc_MO, {}, [], proc_MO.production_id.product_qty, rounding=proc_MO.production_id.product_uom.rounding)
+                    for dest_move in dest_moves:
+                        qty_left, move_dest_id = dest_move['product_uom_qty'], dest_move['move_dest_id']
+                        new_move = move_obj.split(cr, uid, produce_product, qty_left, context=context)
+                        move_obj.write(cr, uid, new_move, {'move_dest_id': move_dest_id, 'production_id': produce_product.production_id.id, 'split_from': False})
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

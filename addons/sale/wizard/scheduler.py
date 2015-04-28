@@ -6,8 +6,9 @@ class procurement_compute_all(models.TransientModel):
 
     def procure_calculation(self, cr, uid, ids, context=None):
         ctx = context or {}
-        if ctx.get('active_model') == 'sale.order' and 'active_ids' in ctx:
-            ctx = self.pool.get('sale.order')._scheduler_context(cr, uid, ctx.get('active_ids', []), ctx)
-            if not ctx:
-                return {'type': 'ir.actions.act_window_close'}
+        sale_obj = self.pool.get('sale.order')
+        # should not allow scheduler to run for SOs with no active procurements, cos it would switch to
+        # normal mode (non-selective) and would run for all existing procurements
+        if sale_obj._is_running_scheduler_for_SO(cr, uid, ctx) and not sale_obj._has_active_procurements(cr, uid, [], ctx):
+            return {'type': 'ir.actions.act_window_close'}
         return super(procurement_compute_all, self).procure_calculation(cr, uid, ids, context=ctx)

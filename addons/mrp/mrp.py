@@ -970,18 +970,19 @@ class mrp_production(osv.osv):
                 if not produced_products.get(produced_product.product_id.id, False):
                     produced_products[produced_product.product_id.id] = 0
                 produced_products[produced_product.product_id.id] += produced_product.product_qty
-            for produce_product in production.move_created_ids:
+            remaining_qty = production_qty_uom
+            last_produce_product = len(production.move_created_ids)
+            for count, produce_product in enumerate(production.move_created_ids, 1):
                 subproduct_factor = self._get_subproduct_factor(cr, uid, production.id, produce_product.id, context=context)
                 lot_id = False
                 if wiz:
                     lot_id = wiz.lot_id.id
-                qty = min(subproduct_factor * production_qty_uom, produce_product.product_qty) #Needed when producing more than maximum quantity
+                qty = min(subproduct_factor * remaining_qty, produce_product.product_qty) #Needed when producing more than maximum quantity
                 new_moves = stock_mov_obj.action_consume(cr, uid, [produce_product.id], qty,
                                                          location_id=produce_product.location_id.id, restrict_lot_id=lot_id, context=context)
                 stock_mov_obj.write(cr, uid, new_moves, {'production_id': production_id}, context=context)
-                remaining_qty = subproduct_factor * production_qty_uom - qty
-                if not float_is_zero(remaining_qty, precision_digits=precision):
-                    # In case you need to make more than planned
+                remaining_qty = subproduct_factor * remaining_qty - qty
+                if not float_is_zero(remaining_qty, precision_digits=precision) and count == last_produce_product: # In case you need to make more than planned
                     #consumed more in wizard than previously planned
                     extra_move_id = stock_mov_obj.copy(cr, uid, produce_product.id, default={'product_uom_qty': remaining_qty,
                                                                                              'production_id': production_id}, context=context)
@@ -990,6 +991,9 @@ class mrp_production(osv.osv):
 
                 if produce_product.product_id.id == production.product_id.id:
                     main_production_move = produce_product.id
+
+                if not remaining_qty and count != last_produce_product:  #when producing less than planned, but more moves exist
+                    break
 
         if production_mode in ['consume', 'consume_produce']:
             if wiz:

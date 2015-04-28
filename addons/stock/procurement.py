@@ -23,11 +23,16 @@ from openerp.osv import fields, osv
 from openerp.tools.translate import _
 
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FORMAT, float_compare, float_round
-from openerp import SUPERUSER_ID
+from openerp import SUPERUSER_ID, api
 from dateutil.relativedelta import relativedelta
 from datetime import datetime
 from psycopg2 import OperationalError
 import openerp
+
+
+class Mock(object):
+    pass
+
 
 class procurement_group(osv.osv):
     _inherit = 'procurement.group'
@@ -83,6 +88,7 @@ class procurement_order(osv.osv):
         'partner_dest_id': fields.many2one('res.partner', 'Customer Address', help="In case of dropshipping, we need to know the destination address more precisely"),
         'move_ids': fields.one2many('stock.move', 'procurement_id', 'Moves', help="Moves created by the procurement"),
         'move_dest_id': fields.many2one('stock.move', 'Destination Move', help="Move which caused (created) the procurement"),
+        'move_dest_ids': fields.many2many('stock.move', 'procurement_stock_move_rel', 'procurement_id', 'move_id', 'Destination Moves', help='Moves which caused (created) this Orderpoint procurement. Used to replace procurement_dest_ids when this Orderpoint procurement is created by a move, not by another procurement (e.g. during resupply for manufacturing).'),
         'route_ids': fields.many2many('stock.location.route', 'stock_location_route_procurement', 'procurement_id', 'route_id', 'Preferred Routes', help="Preferred route to be followed by the procurement order. Usually copied from the generating document (SO) but could be set up manually."),
         'warehouse_id': fields.many2one('stock.warehouse', 'Warehouse', help="Warehouse to consider for the route selection"),
         'orderpoint_id': fields.many2one('stock.warehouse.orderpoint', 'Minimum Stock Rule'),
@@ -101,7 +107,13 @@ class procurement_order(osv.osv):
         ctx['cancel_procurement'] = True
         for procurement in self.browse(cr, uid, to_cancel_ids, context=ctx):
             self.propagate_cancel(cr, uid, procurement, context=ctx)
+        self.drop_temporary_chain_links(cr, uid, to_cancel_ids, context=ctx)
         return super(procurement_order, self).cancel(cr, uid, to_cancel_ids, context=ctx)
+
+    def check(self, cr, uid, ids, autocommit=False, context=None):
+        done_ids = super(procurement_order, self).check(cr, uid, ids, autocommit=autocommit, context=context)
+        self.drop_temporary_chain_links(cr, uid, done_ids, context=context)
+        return done_ids
 
     def _find_parent_locations(self, cr, uid, procurement, context=None):
         location = procurement.location_id
@@ -288,10 +300,14 @@ class procurement_order(osv.osv):
         selected = self._selected_procurements(cr, uid, context)
         return reduce(lambda x, y: x + y['move_ids'], self.read(cr, uid, selected, ['move_ids']), [])
 
-    def _selected_origin(self, cr, uid, context):
+    def _extract_origins(self, cr, uid, context):
         selected = self._selected_procurements(cr, uid, context)
-        origins = sorted(set(proc['origin'].split(':')[0] for proc in self.read(cr, uid, selected, ['origin'])))
-        return selected and ','.join(origins) + ':' or ''
+        return [proc['origin'] for proc in self.read(cr, uid, selected, ['origin'])]
+
+    def _selected_origin(self, cr, uid, context):
+        origins = self._extract_origins(cr, uid, context)
+        dest_origins = sorted(set(dest_o for o in origins for dest_o in o.split(':')[0].split(',')))
+        return dest_origins and ','.join(dest_origins) + ':' or ''
 
     def run_scheduler(self, cr, uid, use_new_cursor=False, company_id=False, context=None):
         '''
@@ -449,9 +465,72 @@ class procurement_order(osv.osv):
         return {}
 
     def _link_orderpoint_procurements_to_moves(self, cr, uid, move_obj, moves_out, context):
+        """ Prepares temporary chaining of orderpoint procurement moves: orderpoint proc move => dest proc move.
+        If we gave special importance to dest procurements by selectively running scheduler for them,
+        it would be reasonable and convenient to temporally chain moves that supply them so that dest moves get
+        auto-assigned upon receiving their supplying moves (overrides normal stock reservation priority strategy).
+        Only MTS orderpoint procurement moves need to be chained, as MTO moves are already chained.
+            Here we only prepare temporary chaining by tracking created procurements. The actual chaining happens upon
+        creation of supplying moves (in purchase orders, manufacturing orders etc).
+            The temporary chain should be cut after the chain has been triggered (moves received/produced and reserved)
+        or when we unreserve partially reserved dest moves (see _unchain() of stock.move). This is done so as to mute
+        quant's history and thus allow further unreserving/rereserving if needed.
+        """
         if not self._selected_procurements(cr, uid, context):
             return
         for out_move in move_obj.browse(cr, uid, moves_out):
             # successfully assigned moves didn't contribute to orderpoint procurements
             if out_move.state != 'assigned' and not out_move.procurement_id.procurement_id:
-                out_move.procurement_id.write({'procurement_id': context['new_orderpoint_procurements'][out_move.product_id.id]})
+                out_move.procurement_id.write({'procurement_id': context['new_orderpoint_procurements'].get(out_move.product_id.id)})
+
+    @api.model
+    def get_qty_left(self, procurement, uom_id=False):
+        """ Remaining Quantity in specified (or procurement's) UoM regardless of operations matched with procurement's moves """
+        qty_left = reduce(lambda x, y: x + y, [m.product_qty - m.reserved_availability for m in procurement.move_ids if m.state in ('confirmed', 'waiting')], 0)
+        return self.env['product.uom']._compute_qty(procurement.product_uom.id, qty_left, to_uom_id=uom_id)
+
+    def _fake_dest_procurements(self, procurement):
+        """ Creates mock procurements if specified orderpoint procurement was created by moves, not by other procurements
+        (e.g. during resupply for manufacturing) """
+        fake_dest_procurements = [dest_proc for dest_proc in procurement.procurement_dest_ids]
+        for dest_move in procurement.move_dest_ids:
+            mock = Mock()
+            mock.move_ids = [dest_move]
+            mock.product_uom = dest_move.product_uom
+            fake_dest_procurements.append(mock)
+        return fake_dest_procurements
+
+    @api.multi
+    def drop_temporary_chain_links(self):
+        """ Let's save some space and speed on what's no longer needed """
+        self and self.write({'move_dest_ids': [(5, False, False)]})
+
+    @api.model
+    def _prepare_dest_procurement_moves(self, procurement, move_template, res, diff_quantity, group_id=False, invoice_state=False, uom_id=False, rounding=None):
+        dest_moves = []
+        if procurement.procurement_dest_ids or procurement.move_dest_ids:
+            fake_dest_procurements = self._fake_dest_procurements(procurement)
+            for dest_procurement in fake_dest_procurements:
+                procurement_qty = procurement.get_qty_left(dest_procurement, uom_id)
+                procurement._ensure_positive(rounding, procurement.product_id.id, procurement_qty, diff_quantity)
+                move_dest_id = [m.id for m in dest_procurement.move_ids if m.state in ('confirmed', 'waiting')]
+                tmp = move_template.copy()
+                tmp.update({
+                    'product_uom_qty': min(procurement_qty, diff_quantity),
+                    'product_uos_qty': min(procurement_qty, diff_quantity),
+                    'move_dest_id': move_dest_id and move_dest_id[0] or False,  # chain temporarily: set dest so that dest gets assigned when this incoming move is done
+                    'group_id': procurement.group_id.id or group_id,  #move group is same as group of procurements if it exists, otherwise take another group
+                    'procurement_id': procurement.id,
+                    'invoice_state': invoice_state,
+                    'propagate': procurement.rule_id.propagate,
+                })
+                diff_quantity -= min(procurement_qty, diff_quantity)
+                res.append(tmp)
+                dest_moves.append(tmp)
+        return diff_quantity, dest_moves
+
+    @api.model
+    def _ensure_positive(self, rounding, product_id, *quantities):
+        for qty in quantities:
+            assert float_compare(qty, 0.0, precision_rounding=rounding) > 0, \
+                'About to create a Phantom incoming move (qty == %s, product = %s)' % (qty, product_id)
