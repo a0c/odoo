@@ -98,7 +98,7 @@ class wizard(osv.osv_memory):
                     user_changes.append((0, 0, {
                         'partner_id': contact.id,
                         'email': contact.email,
-                        'in_portal': in_portal,
+                        'in_portal': True,
                     }))
         return {'value': {'user_ids': user_changes}}
 
