@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from datetime import datetime
 import json
 import logging
 import os
@@ -197,8 +198,16 @@ def dump_db(db_name, stream, backup_format='zip'):
             if stream:
                 openerp.tools.osutil.zip_dir(dump_dir, stream, include_dir=False, fnct_sort=lambda file_name: file_name != 'dump.sql')
             else:
+                filename = "%(db)s_%(timestamp)s.dump" % {
+                    'db': db_name,
+                    'timestamp': datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S%Z")
+                }
+                persist_file = os.path.join('/var/backups/odoo/', filename)
+                persist_file_latest = os.path.join('/var/backups/odoo/', db_name + '.dump')
                 t=tempfile.TemporaryFile()
                 openerp.tools.osutil.zip_dir(dump_dir, t, include_dir=False, fnct_sort=lambda file_name: file_name != 'dump.sql')
+                openerp.tools.osutil.zip_dir(dump_dir, persist_file, include_dir=False, fnct_sort=lambda file_name: file_name != 'dump.sql')
+                openerp.tools.exec_command_pipe('ln', '-f', '-s', persist_file, persist_file_latest)
                 t.seek(0)
                 return t
     else:
@@ -212,6 +221,12 @@ def dump_db(db_name, stream, backup_format='zip'):
 def exp_restore(db_name, data, copy=False):
     data_file = tempfile.NamedTemporaryFile(delete=False)
     try:
+        if not data:
+            latest_backup = os.path.join('/var/backups/odoo/', db_name + '.dump')
+            if os.path.exists(latest_backup):
+                restore_db(db_name, latest_backup, copy=copy)
+                return True
+            return False
         data_file.write(data.decode('base64'))
         data_file.close()
         restore_db(db_name, data_file.name, copy=copy)

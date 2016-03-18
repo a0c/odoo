@@ -258,7 +258,7 @@
                     </tr>
                     <tr>
                         <td><label for="restore_db">File:</label></td>
-                        <td><input type="file" name="db_file" class="required"/></td>
+                        <td><input type="file" name="db_file"/></td>
                     </tr>
                     <tr>
                         <td><label for="new_db">New database name:</label></td>
