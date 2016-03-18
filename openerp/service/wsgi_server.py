@@ -45,6 +45,14 @@ import openerp
 import openerp.tools.config as config
 import websrv_lib
 
+# replace the method address_string() to print the origin host address
+# in proxy mode
+_handler_clazz = werkzeug.serving.WSGIRequestHandler
+_handler_clazz.address_string = type(_handler_clazz.address_string)(lambda self: self.headers.dict['x-real-ip']
+                                                                                 if config['proxy_mode'] and 'x-real-ip' in self.headers.dict
+                                                                                 else self.client_address[0],
+                                                                    None,
+                                                                    _handler_clazz)
 _logger = logging.getLogger(__name__)
 
 # XML-RPC fault codes. Some care must be taken when changing these: the
