@@ -19,6 +19,7 @@
 #
 ##############################################################################
 
+from openerp import api
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 
@@ -88,9 +89,13 @@ class procurement_order(osv.osv):
         'orderpoint_id': fields.many2one('stock.warehouse.orderpoint', 'Minimum Stock Rule'),
     }
 
-    def propagate_cancel(self, cr, uid, procurement, context=None):
-        if procurement.rule_id.action == 'move' and procurement.move_ids:
-            self.pool.get('stock.move').action_cancel(cr, uid, [m.id for m in procurement.move_ids], context=context)
+    @api.multi
+    def propagate_cancel(self):
+        move_cancel = []
+        for procurement in self:
+            if procurement.rule_id.action == 'move' and procurement.move_ids:
+                move_cancel.extend(procurement.move_ids.ids)
+        self.env['stock.move'].browse(sorted(set(move_cancel))).action_cancel()
 
     def cancel(self, cr, uid, ids, context=None):
         if context is None:
@@ -99,8 +104,7 @@ class procurement_order(osv.osv):
         ctx = context.copy()
         #set the context for the propagation of the procurement cancelation
         ctx['cancel_procurement'] = True
-        for procurement in self.browse(cr, uid, to_cancel_ids, context=ctx):
-            self.propagate_cancel(cr, uid, procurement, context=ctx)
+        self.propagate_cancel(cr, uid, to_cancel_ids, context=ctx)
         return super(procurement_order, self).cancel(cr, uid, to_cancel_ids, context=ctx)
 
     def _find_parent_locations(self, cr, uid, procurement, context=None):

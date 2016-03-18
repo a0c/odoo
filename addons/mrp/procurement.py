@@ -24,7 +24,7 @@ from dateutil.relativedelta import relativedelta
 from openerp.osv import osv, fields
 from openerp.tools.translate import _
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
-from openerp import SUPERUSER_ID
+from openerp import api, SUPERUSER_ID
 
 class procurement_rule(osv.osv):
     _inherit = 'procurement.rule'
@@ -41,10 +41,14 @@ class procurement_order(osv.osv):
         'production_id': fields.many2one('mrp.production', 'Manufacturing Order'),
     }
 
-    def propagate_cancel(self, cr, uid, procurement, context=None):
-        if procurement.rule_id.action == 'manufacture' and procurement.production_id:
-            self.pool.get('mrp.production').action_cancel(cr, uid, [procurement.production_id.id], context=context)
-        return super(procurement_order, self).propagate_cancel(cr, uid, procurement, context=context)
+    @api.multi
+    def propagate_cancel(self):
+        prod_cancel = []
+        for procurement in self:
+            if procurement.rule_id.action == 'manufacture' and procurement.production_id:
+                prod_cancel.append(procurement.production_id.id)
+        self.env['mrp.production'].browse(sorted(set(prod_cancel))).action_cancel()
+        return super(procurement_order, self).propagate_cancel()
 
     def _run(self, cr, uid, procurement, context=None):
         if procurement.rule_id and procurement.rule_id.action == 'manufacture':

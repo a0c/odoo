@@ -20,7 +20,7 @@
 ##############################################################################
 
 import pytz
-from openerp import SUPERUSER_ID, workflow
+from openerp import api, SUPERUSER_ID, workflow
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from operator import attrgetter
@@ -1299,20 +1299,31 @@ class procurement_order(osv.osv):
         'purchase_id': fields.related('purchase_line_id', 'order_id', type='many2one', relation='purchase.order', string='Purchase Order'),
     }
 
-    def propagate_cancel(self, cr, uid, procurement, context=None):
-        if procurement.rule_id.action == 'buy' and procurement.purchase_line_id:
-            purchase_line_obj = self.pool.get('purchase.order.line')
-            if procurement.purchase_line_id.state not in ('draft', 'cancel'):
-                    raise osv.except_osv(_('Error!'),
-                        _('Can not cancel this procurement as the related purchase order has been confirmed already.  Please cancel the purchase order first. '))
+    @api.multi
+    def propagate_cancel(self):
+        line_write, line_cancel = {}, []
+        for procurement in self:
+            if procurement.rule_id.action == 'buy' and procurement.purchase_line_id:
+                if procurement.purchase_line_id.state not in ('draft', 'cancel'):
+                        raise osv.except_osv(_('Error!'),
+                            _('Can not cancel this procurement as the related purchase order has been confirmed already.  Please cancel the purchase order first. '))
 
-            new_qty, new_price = self._calc_new_qty_price(cr, uid, procurement, cancel=True, context=context)
-            if new_qty != procurement.purchase_line_id.product_qty:
-                purchase_line_obj.write(cr, uid, [procurement.purchase_line_id.id], {'product_qty': new_qty, 'price_unit': new_price}, context=context)
-            if float_compare(new_qty, 0.0, precision_rounding=procurement.product_uom.rounding) != 1:
-                purchase_line_obj.action_cancel(cr, uid, [procurement.purchase_line_id.id], context=context)
-                purchase_line_obj.unlink(cr, uid, [procurement.purchase_line_id.id], context=context)
-        return super(procurement_order, self).propagate_cancel(cr, uid, procurement, context=context)
+                new_qty, new_price = self.pool.get('procurement.order')._calc_new_qty_price(self._cr, self._uid, procurement, cancel=True, context=self._context)
+                if new_qty != procurement.purchase_line_id.product_qty:
+                    lines = line_write.setdefault(procurement.purchase_line_id.order_id, [])
+                    lines.append((1, procurement.purchase_line_id.id, {'product_qty': new_qty, 'price_unit': new_price}))
+                if float_compare(new_qty, 0.0, precision_rounding=procurement.product_uom.rounding) != 1:
+                    line_cancel.append(procurement.purchase_line_id.id)
+        # don't update lines that will be removed below
+        for po, lines in line_write.iteritems():
+            line_cancel_set = set(line_cancel)
+            lines = [line for line in lines if line[1] not in line_cancel_set]
+            if lines:
+                po.write({'order_line': lines})
+        line_cancel = self.env['purchase.order.line'].browse(line_cancel)
+        line_cancel.action_cancel()
+        line_cancel.unlink()
+        return super(procurement_order, self).propagate_cancel()
 
     def _run(self, cr, uid, procurement, context=None):
         if procurement.rule_id and procurement.rule_id.action == 'buy':
