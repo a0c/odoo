@@ -156,7 +156,7 @@ class XlsxIndex(indexer):
 
         return _to_unicode(res)
 
-cntIndex.register(XlsxIndex())
+# cntIndex.register(XlsxIndex())
 
 class PdfIndex(indexer):
     def _getMimeTypes(self):
