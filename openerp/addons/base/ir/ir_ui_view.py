@@ -194,8 +194,6 @@ class view(osv.osv):
         # Sanity checks: the view should not break anything upon rendering!
         # Any exception raised below will cause a transaction rollback.
         for view in self.browse(cr, uid, ids, context):
-            if view.website_id:
-                context['website_id'] = view.website_id.id
             view_def = self.read_combined(cr, uid, view.id, ['arch'], context=context)
             view_arch_utf8 = view_def['arch']
             if view.type != 'qweb':
