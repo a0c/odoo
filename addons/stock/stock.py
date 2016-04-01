@@ -445,7 +445,7 @@ class stock_quant(osv.osv):
             domain = []
         quants = [(None, qty)]
         #don't look for quants in location that are of type production, supplier or inventory.
-        if location.usage in ['inventory', 'production', 'supplier']:
+        if location.usage in ['inventory', 'production', 'supplier'] and not location.scrap_location:
             return quants
         res_qty = qty
         if not prefered_domain_list:
