@@ -1099,6 +1099,10 @@ class AssetsBundle(object):
         context['inherit_branding'] = False
         context['inherit_branding_auto'] = False
         context['rendering_bundle'] = True
+        if 'website_id' not in context:
+            website_id = self.registry['website'].search(self.cr, self.uid, [('name', '=', request.httprequest.host)])
+            if website_id:
+                context['website_id'] = website_id[0]
         self.html = self.registry['ir.ui.view'].render(self.cr, self.uid, xmlid, context=context)
         self.parse()
 
