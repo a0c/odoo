@@ -5813,7 +5813,7 @@ $.widget( "ui.autocomplete", {
 		// always save the actual value, not the one passed as an argument
 		this.term = this._value();
 
-		if ( value.length < this.options.minLength ) {
+		if ( value.length < this.options.minLength || (this.options.search_on_key_down && event.which != $.ui.keyCode.DOWN)) {
 			return this.close( event );
 		}
 

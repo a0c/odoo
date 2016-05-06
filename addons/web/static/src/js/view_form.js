@@ -3767,6 +3767,7 @@ instance.web.form.FieldMany2One = instance.web.form.AbstractField.extend(instanc
             //close: anyoneLoosesFocus,
             minLength: 0,
             delay: 200,
+            search_on_key_down: this.options.search_on_key_down,
         });
         var appendTo = this.$el.parents('.oe_view_manager_body:visible, .modal-dialog:visible').last();
         if (appendTo.length === 0){
