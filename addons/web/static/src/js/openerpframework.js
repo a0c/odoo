@@ -1278,6 +1278,23 @@ openerp.TranslationDataBase = openerp.Class.extend(/** @lends instance.Translati
             this.parameters = translation_bundle.lang_parameters;
         }
     },
+    add_bundle: function(translation_bundle) {
+        var self = this;
+        if (this.db === undefined) {
+            this.db = {};
+        }
+        var modules = _.keys(translation_bundle.modules);
+        modules.sort();
+        if (_.include(modules, "web")) {
+            modules = ["web"].concat(_.without(modules, "web"));
+        }
+        _.each(modules, function(name) {
+            self.add_module_translation(translation_bundle.modules[name]);
+        });
+        if (translation_bundle.lang_parameters) {
+            this.parameters = translation_bundle.lang_parameters;
+        }
+    },
     add_module_translation: function(mod) {
         var self = this;
         _.each(mod.messages, function(message) {
