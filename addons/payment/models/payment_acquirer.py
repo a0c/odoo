@@ -65,7 +65,8 @@ class PaymentAcquirer(osv.Model):
         'company_id': fields.many2one('res.company', 'Company', required=True),
         'pre_msg': fields.html('Message', translate=True,
             help='Message displayed to explain and help the payment process.'),
-        'post_msg': fields.html('Thanks Message', help='Message displayed after having done the payment process.'),
+        'post_msg': fields.html('Thanks Message', translate=True,
+                                help='Message displayed after having done the payment process.'),
         'validation': fields.selection(
             [('manual', 'Manual'), ('automatic', 'Automatic')],
             string='Process Method',
