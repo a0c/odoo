@@ -77,7 +77,7 @@ class sale_order(osv.Model):
 
     def get_formview_action(self, cr, uid, id, context=None):
         user = self.pool['res.users'].browse(cr, SUPERUSER_ID, uid, context=context)
-        if user.share:
+        if user.share and not (context or {}).get('params', {}).get('action') == 'mail.action_mail_redirect':
             document = self.browse(cr, uid, id, context=context)
             action_xmlid = 'action_quotations_portal' if document.state in ('draft', 'sent') else 'action_orders_portal'
             return self.pool['ir.actions.act_window'].for_xml_id(cr, uid, 'portal_sale', action_xmlid, context=context)
