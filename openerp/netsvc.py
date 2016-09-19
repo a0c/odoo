@@ -148,8 +148,7 @@ def init_logger():
             handler = logging.handlers.SysLogHandler('/var/run/log')
         else:
             handler = logging.handlers.SysLogHandler('/dev/log')
-        format = '%s %s' % (release.description, release.version) \
-                + ':%(dbname)s:%(levelname)s:%(name)s:%(message)s'
+        format = release.product_name + (not tools.config['xmlrpc'] and 'Cron' or '') + ' ' + format
 
     elif tools.config['logfile']:
         # LogFile Handler
