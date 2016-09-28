@@ -143,7 +143,7 @@ class project(osv.osv):
                 COALESCE(SUM(total_hours), 0.0), COALESCE(SUM(effective_hours), 0.0)
             FROM project_task
             LEFT JOIN project_task_type ON project_task.stage_id = project_task_type.id
-            WHERE project_task.project_id IN %s AND project_task_type.fold = False
+            WHERE project_task.project_id IN %s
             GROUP BY project_id
             """, (tuple(child_parent.keys()),))
         # aggregate results into res

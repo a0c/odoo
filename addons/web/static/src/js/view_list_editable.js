@@ -183,7 +183,15 @@
                 if (!id && done.created) {
                     id = done.record.get('id');
                 }
-                self.handle_button(name, id, callback);
+                var attrs = self.fields_view.arch.attrs;
+                var reload_on_button = ('reload_on_button' in attrs) ? JSON.parse(attrs['reload_on_button']) : false;
+                if (!reload_on_button) {
+                    self.handle_button(name, id, callback);
+                } else {
+                    self.handle_button(name, id, callback).done(function() {
+                        self.reload();
+                    });
+                }
             });
         },
         /**
