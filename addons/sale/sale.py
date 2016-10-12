@@ -369,7 +369,6 @@ class sale_order(osv.osv):
             vals = dict(defaults, **vals)
         ctx = dict(context or {}, mail_create_nolog=True)
         new_id = super(sale_order, self).create(cr, uid, vals, context=ctx)
-        self.message_post(cr, uid, [new_id], body=_("Quotation created"), context=ctx)
         return new_id
 
     def button_dummy(self, cr, uid, ids, context=None):
