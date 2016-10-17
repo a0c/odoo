@@ -30,6 +30,11 @@ import threading
 
 import psycopg2
 
+try:
+    from setproctitle import getproctitle
+except ImportError:
+    getproctitle = lambda x: None
+
 import openerp
 import sql_db
 import tools
@@ -114,9 +119,19 @@ LEVEL_COLOR_MAPPING = {
 }
 
 class DBFormatter(logging.Formatter):
+    def format_with_prefix(self, record):
+        programname = release.product_name
+        cron = ''
+        process = getproctitle()
+        if process and process[:7] == 'openerp' and process[-1] != ' ':
+            cron = 'Cron'
+        return '%s%s %s' % (programname, cron, logging.Formatter.format(self, record))
+
     def format(self, record):
         record.pid = os.getpid()
         record.dbname = getattr(threading.currentThread(), 'dbname', '?')
+        if tools.config['syslog']:
+            return self.format_with_prefix(record)
         return logging.Formatter.format(self, record)
 
 class ColoredFormatter(DBFormatter):
@@ -148,8 +163,6 @@ def init_logger():
             handler = logging.handlers.SysLogHandler('/var/run/log')
         else:
             handler = logging.handlers.SysLogHandler('/dev/log')
-        format = '%s %s' % (release.description, release.version) \
-                + ':%(dbname)s:%(levelname)s:%(name)s:%(message)s'
 
     elif tools.config['logfile']:
         # LogFile Handler
