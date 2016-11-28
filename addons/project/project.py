@@ -143,7 +143,7 @@ class project(osv.osv):
                 COALESCE(SUM(total_hours), 0.0), COALESCE(SUM(effective_hours), 0.0)
             FROM project_task
             LEFT JOIN project_task_type ON project_task.stage_id = project_task_type.id
-            WHERE project_task.project_id IN %s AND project_task_type.fold = False
+            WHERE project_task.project_id IN %s
             GROUP BY project_id
             """, (tuple(child_parent.keys()),))
         # aggregate results into res
@@ -345,9 +345,10 @@ class project(osv.osv):
         for task in proj.tasks:
             # preserve task name and stage, normally altered during copy
             defaults = {'stage_id': task.stage_id.id,
+                        'project_id': False,
                         'name': task.name}
             map_task_id[task.id] =  task_obj.copy(cr, uid, task.id, defaults, context=context)
-        self.write(cr, uid, [new_project_id], {'tasks':[(6,0, map_task_id.values())]})
+        self.write(cr, uid, [new_project_id], {'tasks':[(6,0, map_task_id.values())]}, context=context)
         task_obj.duplicate_task(cr, uid, map_task_id, context=context)
         return True
 

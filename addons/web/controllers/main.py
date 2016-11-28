@@ -969,12 +969,12 @@ class DataSet(http.Controller):
                            starting the resequencing from an arbitrary number,
                            defaults to ``0``
         """
-        m = request.session.model(model)
+        m = request.env[model]
         if not m.fields_get([field]):
             return False
         # python 2.6 has no start parameter
-        for i, id in enumerate(ids):
-            m.write(id, { field: i + offset })
+        for i, record in enumerate(m.browse(ids)):
+            record.write({field: i + offset})
         return True
 
 class View(http.Controller):
