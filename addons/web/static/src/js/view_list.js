@@ -1556,6 +1556,8 @@ instance.web.ListView.Groups = instance.web.Class.extend( /** @lends instance.we
             return c.widget === 'handle';
         });
         var seqname = sequence_field ? sequence_field.name : 'sequence';
+        var attrs = this.view.fields_view.arch.attrs;
+        var resequence_from_0 = ('resequence_from_0' in attrs) ? JSON.parse(attrs['resequence_from_0']) : false;
 
         // ondrop, move relevant record & fix sequences
         list.$current.sortable({
@@ -1588,6 +1590,10 @@ instance.web.ListView.Groups = instance.web.Class.extend( /** @lends instance.we
                     // if drag to 1st row (to = 0), start sequencing from 0
                     // (exclusive lower bound)
                     seq = to ? list.records.at(to - 1).get(seqname) : 0;
+                if (resequence_from_0) {
+                    index = 0;
+                    seq = -1;
+                }
                 var fct = function (dataset, id, seq) {
                     $.async_when().done(function () {
                         var attrs = {};
