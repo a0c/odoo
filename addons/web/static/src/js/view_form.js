@@ -839,7 +839,7 @@ instance.web.FormView = instance.web.View.extend(instance.web.form.FieldManagerM
             for (var f in self.fields) {
                 if (!self.fields.hasOwnProperty(f)) { continue; }
                 f = self.fields[f];
-                if (!f.is_valid()) {
+                if (!self.ignore_required_on_save && !f.is_valid()) {
                     form_invalid = true;
                     if (!first_invalid_field) {
                         first_invalid_field = f;
@@ -1983,10 +1983,14 @@ instance.web.form.WidgetButton = instance.web.form.FormWidget.extend({
             }
         };
         if (!this.node.attrs.special) {
-            return this.view.recursive_save().then(exec_action);
+            self.ignore_required(self.node.attrs.ignore_required);
+            return this.view.recursive_save().always(function(){self.ignore_required(false);}).then(exec_action);
         } else {
             return exec_action();
         }
+    },
+    ignore_required: function(disable) {
+        this.view.ignore_required_on_save = disable;
     },
     on_confirmed: function() {
         var self = this;
