@@ -354,7 +354,9 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
                 self.is_action_enabled('delete') && { label: _t('Delete'), callback: this.do_delete_selected }
             ]));
             this.sidebar.add_toolbar(this.fields_view.toolbar);
-            this.sidebar.$el.hide();
+            var sidebar_always_show = this.get_view_attr('sidebar_always_show');
+            if (!sidebar_always_show)
+                this.sidebar.$el.hide();
         }
         //Sort
         var default_order = this.fields_view.arch.attrs.default_order,
@@ -646,7 +648,9 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
         if (!ids.length) {
             this.dataset.index = 0;
             if (this.sidebar) {
-                this.sidebar.$el.hide();
+                var sidebar_always_show = this.get_view_attr('sidebar_always_show');
+                if (!sidebar_always_show)
+                    this.sidebar.$el.hide();
             }
             this.compute_aggregates();
             return;

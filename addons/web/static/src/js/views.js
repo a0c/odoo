@@ -1269,13 +1269,14 @@ instance.web.Sidebar = instance.web.Widget.extend({
             else {
                 domain = $.Deferred().resolve(undefined);
             }
-            if (ids.length === 0) {
+            var sidebar_always_show = self.view.get_view_attr('sidebar_always_show');
+            if (ids.length === 0 && !sidebar_always_show) {
                 new instance.web.Dialog(this, { title: _t("Warning"), size: 'medium',}, $("<div />").text(_t("You must choose at least one record."))).open();
                 return false;
             }
             var dataset = self.getParent().dataset;
             var active_ids_context = {
-                active_id: ids[0],
+                active_id: ids.length === 0 ? 0 : ids[0],
                 active_ids: ids,
                 active_model: dataset.model,
             };
@@ -1576,6 +1577,10 @@ instance.web.View = instance.web.Widget.extend({
     is_action_enabled: function(action) {
         var attrs = this.fields_view.arch.attrs;
         return (action in attrs) ? JSON.parse(attrs[action]) : true;
+    },
+    get_view_attr: function(attr) {
+        var attrs = this.fields_view.arch.attrs;
+        return (attr in attrs) ? JSON.parse(attrs[attr]) : false;
     },
 });
 

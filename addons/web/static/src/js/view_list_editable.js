@@ -183,8 +183,7 @@
                 if (!id && done.created) {
                     id = done.record.get('id');
                 }
-                var attrs = self.fields_view.arch.attrs;
-                var reload_on_button = ('reload_on_button' in attrs) ? JSON.parse(attrs['reload_on_button']) : false;
+                var reload_on_button = self.get_view_attr('reload_on_button');
                 if (!reload_on_button) {
                     self.handle_button(name, id, callback);
                 } else {
