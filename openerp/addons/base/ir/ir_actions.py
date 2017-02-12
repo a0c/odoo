@@ -72,6 +72,19 @@ class actions(osv.osv):
         todo_obj.unlink(cr, uid, todo_ids, context=context)
         return super(actions, self).unlink(cr, uid, ids, context=context)
 
+    @openerp.api.model
+    def _get_eval_context(self):
+        """ evaluation context to pass to safe_eval """
+        return {
+            'uid': self._uid,
+            'user': self.env.user,
+            'time': time,
+            'datetime': datetime,
+            'dateutil': dateutil,
+            'timezone': pytz.timezone,
+        }
+
+
 class ir_actions_report_xml(osv.osv):
 
     def _report_content(self, cursor, user, ids, name, arg, context=None):

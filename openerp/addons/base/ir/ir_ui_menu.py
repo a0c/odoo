@@ -338,7 +338,8 @@ class ir_ui_menu(osv.osv):
                     obj = self.pool[menu.action.res_model]
                     if obj._needaction:
                         if menu.action.type == 'ir.actions.act_window':
-                            dom = menu.action.domain and eval(menu.action.domain, {'uid': uid}) or []
+                            eval_context = menu.env['ir.actions.act_window']._get_eval_context()
+                            dom = eval(menu.action.domain or '[]', eval_context)
                         else:
                             dom = eval(menu.action.params_store or '{}', {'uid': uid}).get('domain')
                         res[menu.id]['needaction_enabled'] = obj._needaction
