@@ -159,6 +159,9 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
         this.$el.addClass('oe_list');
         return this._super();
     },
+    dateToUTC: function(date) {
+        return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(),  date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());
+    },
     /**
      * Returns the style for the provided record in the current view (from the
      * ``@colors`` and ``@fonts`` attributes)
@@ -171,6 +174,7 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
 
         var context = _.extend({}, record.attributes, {
             uid: this.session.uid,
+            current_time: this.dateToUTC(new Date()).toString('yyyy-MM-dd HH:mm:ss'),
             current_date: new Date().toString('yyyy-MM-dd')
             // TODO: time, datetime, relativedelta
         });
