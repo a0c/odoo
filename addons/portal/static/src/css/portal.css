@@ -13,8 +13,9 @@
 
 .openerp .payment_acquirers {
     position: relative;
+    float: right;
     padding: 10px 15px;
-    right: -125px; /* improved margin according bootstrap3 */
+    right: -30px; /* improved margin according bootstrap3 */
     width: 650px;
     margin-left: 80px;
 
