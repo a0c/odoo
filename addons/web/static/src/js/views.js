@@ -428,6 +428,7 @@ instance.web.ActionManager = instance.web.Widget.extend({
             this.dialog = new instance.web.Dialog(this, {
                 title: executor.action.name,
                 dialogClass: executor.klass,
+                no_close_on_esc: executor.action.context.no_close_on_esc ? true : false,
             });
 
             // chain on_close triggers with previous dialog, if any

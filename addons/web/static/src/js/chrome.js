@@ -155,7 +155,7 @@ instance.web.Dialog = instance.web.Widget.extend({
         this.$dialog_box = $(QWeb.render('Dialog', options)).appendTo("body");
         this.$el.modal({
             'backdrop': false,
-            'keyboard': true,
+            'keyboard': 'no_close_on_esc' in options ? !options.no_close_on_esc : true,
         });
         if (options.size !== 'large'){
             var dialog_class_size = this.$dialog_box.find('.modal-lg').removeClass('modal-lg');
