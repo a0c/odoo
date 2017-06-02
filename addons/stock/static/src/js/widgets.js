@@ -157,7 +157,7 @@ function openerp_picking_widgets(instance){
             });
             this.$('.oe_searchbox').blur(function(){
                 self.getParent().barcode_scanner.connect(function(ean){
-                    self.get_Parent().scan(ean);
+                    self.getParent().scan(ean);
                 });
             })
             this.$('#js_select').change(function(){
