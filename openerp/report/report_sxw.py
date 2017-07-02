@@ -23,6 +23,7 @@ import StringIO
 import cStringIO
 import base64
 from datetime import datetime
+import datetime as DT
 import os
 import re
 import time
@@ -198,7 +199,7 @@ class rml_parse(object):
                     d = DEFAULT_DIGITS
         return d
 
-    def formatLang(self, value, digits=None, date=False, date_time=False, grouping=True, monetary=False, dp=False, currency_obj=False):
+    def formatLang(self, value, digits=None, date=False, date_time=False, time_format=False, duration=False, grouping=True, monetary=False, dp=False, currency_obj=False):
         """
             Assuming 'Account' decimal.precision=3:
                 formatLang(value) -> digits=2 (default)
@@ -206,6 +207,12 @@ class rml_parse(object):
                 formatLang(value, dp='Account') -> digits=3
                 formatLang(value, digits=5, dp='Account') -> digits=5
         """
+        if duration:
+            td = DT.timedelta(hours=value)
+            res = str(td - DT.timedelta(seconds=(td.seconds % 60), microseconds=td.microseconds))
+            if res.count(':') == 2 and res.endswith(':00'):
+                res = res[:-3]
+            return res
         if digits is None:
             if dp:
                 digits = self.get_digits(dp=dp)
@@ -227,7 +234,7 @@ class rml_parse(object):
             parse_format = DEFAULT_SERVER_DATE_FORMAT
             if date_time:
                 value = value.split('.')[0]
-                date_format = date_format + " " + self.lang_dict['time_format']
+                date_format = date_format + " " + (time_format or self.lang_dict['time_format'])
                 parse_format = DEFAULT_SERVER_DATETIME_FORMAT
             if isinstance(value, basestring):
                 # FIXME: the trimming is probably unreliable if format includes day/month names

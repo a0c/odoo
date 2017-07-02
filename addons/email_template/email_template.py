@@ -519,10 +519,11 @@ class email_template(osv.osv):
                     report = report_xml_pool.browse(cr, uid, template.report_template.id, context)
                     report_service = report.report_name
 
+                    report_res_ids = context.get('merge_report_ids', [res_id])
                     if report.report_type in ['qweb-html', 'qweb-pdf']:
-                        result, format = self.pool['report'].get_pdf(cr, uid, [res_id], report_service, context=ctx), 'pdf'
+                        result, format = self.pool['report'].get_pdf(cr, uid, report_res_ids, report_service, context=ctx), 'pdf'
                     else:
-                        result, format = openerp.report.render_report(cr, uid, [res_id], report_service, {'model': template.model}, ctx)
+                        result, format = openerp.report.render_report(cr, uid, report_res_ids, report_service, {'model': template.model}, ctx)
             
             	    # TODO in trunk, change return format to binary to match message_post expected format
                     result = base64.b64encode(result)
