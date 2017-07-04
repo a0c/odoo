@@ -2018,14 +2018,14 @@
   min-width: 150px;
   font-weight: bold !important;
 }
-.openerp .oe_form td.oe_form_group_cell + .oe_form_group_cell {
+.openerp .oe_form>:not(.oe_form_group_narrow) td.oe_form_group_cell + .oe_form_group_cell {
   padding: 2px 0 2px 8px;
 }
 .openerp .oe_form .oe_form_group {
   width: 100%;
   margin: 9px 0 9px 0;
 }
-.openerp .oe_form .oe_form_group .oe_form_group_cell.oe_group_right {
+.openerp .oe_form>:not(.oe_form_group_narrow) .oe_form_group .oe_form_group_cell.oe_group_right {
   padding-left: 20px;
 }
 .openerp .oe_form .oe_form_label_help[for], .openerp .oe_form .oe_form_label[for] {
