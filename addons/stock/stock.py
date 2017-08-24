@@ -3915,7 +3915,7 @@ class stock_package(osv.osv):
             else:
                 res[pack.id]['location_id'] = False
                 res[pack.id]['owner_id'] = False
-                res[pack.id]['company_id'] = False
+                # res[pack.id]['company_id'] = False
         return res
 
     def _get_packages_to_relocate(self, cr, uid, ids, context=None):
