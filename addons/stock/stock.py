@@ -3903,7 +3903,8 @@ class stock_package(osv.osv):
 
     def _get_package_info(self, cr, uid, ids, name, args, context=None):
         quant_obj = self.pool.get("stock.quant")
-        default_company_id = self.pool.get('res.users').browse(cr, uid, uid, context=context).company_id.id
+        comp_uid = (context or {}).get('uid', uid)
+        default_company_id = self.pool.get('res.users').browse(cr, uid, comp_uid, context=context).company_id.id
         res = dict((res_id, {'location_id': False, 'company_id': default_company_id, 'owner_id': False}) for res_id in ids)
         for pack in self.browse(cr, uid, ids, context=context):
             quants = quant_obj.search(cr, uid, [('package_id', 'child_of', pack.id)], context=context)
