@@ -20,6 +20,7 @@
 ##############################################################################
 from openerp.osv import osv, fields
 from openerp.addons.edi import EDIMixin
+from openerp.tools import float_round
 from openerp.tools.translate import _
 
 from werkzeug import url_encode
@@ -197,8 +198,18 @@ class sale_order(osv.osv, EDIMixin):
                     "no_note": "1",
                     "bn": "OpenERP_Order_PayNow_" + order.pricelist_id.currency_id.name,
                 }
+                fees = self._paypal_fees(order)
+                if fees is not None:
+                    params['handling'] = '%.2f' % fees
                 res[order.id] = "https://www.paypal.com/cgi-bin/webscr?" + url_encode(params)
         return res
+
+    def _paypal_fees(self, order):
+        acq = order.env['payment.acquirer'].search([('provider', '=', 'paypal'), ('company_id', '=', order.company_id.id)])
+        if not (acq and acq.fees_active):
+            return None
+        fees = acq.paypal_compute_fees(order.amount_total, order.pricelist_id.currency_id.id, order.partner_id.country_id.id)
+        return float_round(fees[0], 2)
 
     _columns = {
         'paypal_url': fields.function(_edi_paypal_url, type='char', string='Paypal Url'),
