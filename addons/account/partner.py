@@ -125,10 +125,11 @@ class account_fiscal_position(osv.osv):
         if delivery.property_account_position or partner.property_account_position:
             return delivery.property_account_position.id or partner.property_account_position.id
 
-        domains = [[('auto_apply', '=', True), ('vat_required', '=', partner.vat_subjected)]]
+        domain_comp = company_id and [('company_id', '=', company_id)] or []
+        domains = [domain_comp + [('auto_apply', '=', True), ('vat_required', '=', partner.vat_subjected)]]
         if partner.vat_subjected:
             # Possibly allow fallback to non-VAT positions, if no VAT-required position matches
-            domains += [[('auto_apply', '=', True), ('vat_required', '=', False)]]
+            domains += [domain_comp + [('auto_apply', '=', True), ('vat_required', '=', False)]]
 
         for domain in domains:
             if delivery.country_id.id:
