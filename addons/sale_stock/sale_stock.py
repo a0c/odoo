@@ -273,9 +273,10 @@ class sale_order_line(osv.osv):
             return True if the product availibility in stock does not need to be verified
         """
         is_available = False
+        product_routes = product.route_ids | product.categ_id.total_route_ids
         if warehouse_id:
             warehouse = self.pool['stock.warehouse'].browse(cr, uid, warehouse_id, context=context)
-            for product_route in product.route_ids:
+            for product_route in product_routes:
                 if warehouse.mto_pull_id and warehouse.mto_pull_id.route_id and warehouse.mto_pull_id.route_id.id == product_route.id:
                     is_available = True
                     break
@@ -286,12 +287,11 @@ class sale_order_line(osv.osv):
                 # if route MTO not found in ir_model_data, we treat the product as in MTS
                 mto_route_id = False
             if mto_route_id:
-                for product_route in product.route_ids:
+                for product_route in product_routes:
                     if product_route.id == mto_route_id:
                         is_available = True
                         break
         if not is_available:
-            product_routes = product.route_ids + product.categ_id.total_route_ids
             for pull_rule in product_routes.mapped('pull_ids'):
                 if pull_rule.picking_type_id.sudo().default_location_src_id.usage == 'supplier' and\
                         pull_rule.picking_type_id.sudo().default_location_dest_id.usage == 'customer':
