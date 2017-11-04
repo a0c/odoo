@@ -156,6 +156,8 @@ class product_product(osv.osv):
             domain_move_out.append(owner_domain)
         if context.get('package_id'):
             domain_quant.append(('package_id', '=', context['package_id']))
+        if context.get('no_reserve'):
+            domain_quant.append(('reservation_id', '=', False))
 
         domain_move_in += domain_move_in_loc
         domain_move_out += domain_move_out_loc

@@ -268,12 +268,12 @@ class sale_order_line(osv.osv):
 
         return {'value': result, 'warning': warning}
 
-    def _check_routing(self, cr, uid, ids, product, warehouse_id, context=None):
+    def _check_routing(self, cr, uid, ids, product, warehouse_id, route_id, context=None):
         """ Verify the route of the product based on the warehouse
             return True if the product availibility in stock does not need to be verified
         """
         is_available = False
-        product_routes = product.route_ids | product.categ_id.total_route_ids
+        product_routes = self._get_product_routes(product, warehouse_id, route_id)
         if warehouse_id:
             warehouse = self.pool['stock.warehouse'].browse(cr, uid, warehouse_id, context=context)
             for product_route in product_routes:
@@ -299,13 +299,17 @@ class sale_order_line(osv.osv):
                     break
         return is_available
 
+    def _get_product_routes(self, product, warehouse_id, route_id):
+        return product.route_ids.browse(route_id) or product.route_ids | product.categ_id.total_route_ids
+
     def product_id_change_with_wh(self, cr, uid, ids, pricelist, product, qty=0,
             uom=False, qty_uos=0, uos=False, name='', partner_id=False,
-            lang=False, update_tax=True, date_order=False, packaging=False, fiscal_position=False, flag=False, warehouse_id=False, context=None):
+            lang=False, update_tax=True, date_order=False, packaging=False, fiscal_position=False, flag=False,
+            warehouse_id=False, route_id=False, context=None):
         context = context or {}
-        product_uom_obj = self.pool.get('product.uom')
         product_obj = self.pool.get('product.product')
         warning = {}
+        title = False
         #UoM False due to hack which makes sure uom changes price, ... in product_id_change
         res = self.product_id_change(cr, uid, ids, pricelist, product, qty=qty,
             uom=False, qty_uos=qty_uos, uos=uos, name=name, partner_id=partner_id,
@@ -334,33 +338,47 @@ class sale_order_line(osv.osv):
 
         if product_obj.type == 'product':
             #determine if the product needs further check for stock availibility
-            is_available = self._check_routing(cr, uid, ids, product_obj, warehouse_id, context=context)
+            is_available = self._check_routing(cr, uid, ids, product_obj, warehouse_id, route_id, context=context)
 
             #check if product is available, and if not: raise a warning, but do this only for products that aren't processed in MTO
             if not is_available:
-                uom_record = False
-                if uom:
-                    uom_record = product_uom_obj.browse(cr, uid, uom, context=context)
-                    if product_obj.uom_id.category_id.id != uom_record.category_id.id:
-                        uom_record = False
-                if not uom_record:
-                    uom_record = product_obj.uom_id
-                compare_qty = float_compare(product_obj.virtual_available, qty, precision_rounding=uom_record.rounding)
-                if compare_qty == -1:
-                    warn_msg = _('You plan to sell %.2f %s but you only have %.2f %s available !\nThe real stock is %.2f %s. (without reservations)') % \
-                        (qty, uom_record.name,
-                         max(0,product_obj.virtual_available), uom_record.name,
-                         max(0,product_obj.qty_available), uom_record.name)
-                    warning_msgs += _("Not enough stock ! : ") + warn_msg + "\n\n"
+                warning_msgs, title, qty_available = self.check_availability(cr, uid, product_obj, qty, uom, warehouse_id, route_id, warning_msgs, context)
+                if qty_available is not None:
+                    res['value']['product_uom_qty'] = qty_available
 
         #update of warning messages
         if warning_msgs:
             warning = {
-                       'title': _('Configuration Error!'),
+                       'title': title or _('Configuration Error!'),
                        'message' : warning_msgs
                     }
         res.update({'warning': warning})
         return res
+
+    def check_availability(self, cr, uid, product, qty, uom, warehouse_id, route_id, warning_msgs, context=None):
+        qty_available, title = None, None
+        uom_record = self._get_uom_record(cr, uid, uom, product, context)
+        compare_qty = float_compare(product.virtual_available, qty, precision_rounding=uom_record.rounding)
+        if compare_qty == -1:
+            warn_msg = _('You plan to sell %.2f %s but you only have %.2f %s available !\nThe real stock is %.2f %s. (without reservations)\n\nSetting quantity to maximum available %.2f.') % \
+                       (qty, uom_record.name,
+                        max(0, product.virtual_available), uom_record.name,
+                        max(0, product.qty_available), uom_record.name,
+                        max(0, product.virtual_available))
+            warning_msgs += _("Not enough stock ! : ") + warn_msg + "\n\n"
+            qty_available = product.virtual_available
+        return warning_msgs, title, qty_available
+
+    def _get_uom_record(self, cr, uid, uom, product, context):
+        product_uom_obj = self.pool.get('product.uom')
+        uom_record = False
+        if uom:
+            uom_record = product_uom_obj.browse(cr, uid, uom, context=context)
+            if product.uom_id.category_id.id != uom_record.category_id.id:
+                uom_record = False
+        if not uom_record:
+            uom_record = product.uom_id
+        return uom_record
 
     def button_cancel(self, cr, uid, ids, context=None):
         lines = self.browse(cr, uid, ids, context=context)
