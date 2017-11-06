@@ -200,6 +200,9 @@ class product_product(osv.osv):
                 return True
         return super(product_product, self).need_procurement(cr, uid, ids, context=context)
 
+    def routes(self, warehouse_id, route_id):
+        return self.env['stock.location.route'].browse(route_id) or self.route_ids | self.categ_id.total_route_ids
+
 class sale_order_line(osv.osv):
     _inherit = 'sale.order.line'
 
@@ -273,7 +276,7 @@ class sale_order_line(osv.osv):
             return True if the product availibility in stock does not need to be verified
         """
         is_available = False
-        product_routes = self._get_product_routes(product, warehouse_id, route_id)
+        product_routes = product.routes(warehouse_id, route_id)
         if warehouse_id:
             warehouse = self.pool['stock.warehouse'].browse(cr, uid, warehouse_id, context=context)
             for product_route in product_routes:
@@ -298,9 +301,6 @@ class sale_order_line(osv.osv):
                     is_available = True
                     break
         return is_available
-
-    def _get_product_routes(self, product, warehouse_id, route_id):
-        return product.route_ids.browse(route_id) or product.route_ids | product.categ_id.total_route_ids
 
     def product_id_change_with_wh(self, cr, uid, ids, pricelist, product, qty=0,
             uom=False, qty_uos=0, uos=False, name='', partner_id=False,
