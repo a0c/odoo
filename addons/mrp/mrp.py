@@ -919,7 +919,7 @@ class mrp_production(osv.osv):
                     continue
 
                 q = min(move.product_qty, qty)
-                quants = quant_obj.quants_get_prefered_domain(cr, uid, move.location_id, move.product_id, q, domain=[('qty', '>', 0.0)],
+                quants = quant_obj.quants_get_prefered_domain(cr, uid, move.location_id, move.product_id, q, move, domain=[('qty', '>', 0.0)],
                                                      prefered_domain_list=[[('reservation_id', '=', move.id)]], context=context)
                 for quant, quant_qty in quants:
                     if quant:
