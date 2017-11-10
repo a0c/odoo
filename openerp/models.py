@@ -3206,6 +3206,7 @@ class BaseModel(object):
             records = records[:PREFETCH_MAX] | self
 
         # determine which fields can be prefetched
+        no_prefetch = set(self._context.get('no_prefetch', []))
         if not self.env.in_draft and \
                 self._context.get('prefetch_fields', True) and \
                 self._columns[field.name]._prefetch:
@@ -3213,6 +3214,7 @@ class BaseModel(object):
             fnames = {fname
                 for fname, fcolumn in self._columns.iteritems()
                 if fcolumn._prefetch
+                if fname not in no_prefetch
                 if not fcolumn.groups or self.user_has_groups(fcolumn.groups)
             }
         elif self._columns[field.name]._multi:
