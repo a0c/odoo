@@ -28,7 +28,7 @@ from openerp.osv import fields, osv
 from openerp.tools.float_utils import float_compare, float_round
 from openerp.tools.translate import _
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT, DEFAULT_SERVER_DATE_FORMAT
-from openerp.exceptions import Warning
+from openerp.exceptions import Warning, AccessError
 from openerp import SUPERUSER_ID, api
 import openerp.addons.decimal_precision as dp
 from openerp.addons.procurement import procurement
@@ -416,7 +416,7 @@ class stock_quant(osv.osv):
             to_recompute_move_ids = [x.reservation_id.id for x in to_move_quants if x.reservation_id and x.reservation_id.id != move.id]
             self.move_quants_write(cr, uid, to_move_quants, move, location_to, dest_package_id, context=context)
             self.pool.get('stock.move').recalculate_move_state(cr, uid, to_recompute_move_ids, context=context)
-        if location_to.usage == 'internal':
+        if location_to.usage == 'internal' and (context is None or context.get('reconcile_negative_quant', True)):
             # Do manual search for quant to avoid full table scan (order by id)
             cr.execute("""
                 SELECT 0 FROM stock_quant, stock_location WHERE product_id = %s AND stock_location.id = stock_quant.location_id AND
@@ -1338,6 +1338,8 @@ class stock_picking(osv.osv):
     def picking_recompute_remaining_quantities(self, cr, uid, picking, context=None):
         need_rereserve = False
         all_op_processed = True
+        if picking.move_lines.filtered(lambda x: x.state not in ('done', 'cancel') and x.has_reserved_quant_from_different_company()):
+            return need_rereserve, all_op_processed
         if picking.pack_operation_ids:
             need_rereserve, all_op_processed = self.recompute_remaining_qty(cr, uid, picking, context=context)
         return need_rereserve, all_op_processed
@@ -2037,13 +2039,16 @@ class stock_move(osv.osv):
                         new_date = datetime.strptime(vals.get(propagated_date_field), DEFAULT_SERVER_DATETIME_FORMAT)
                         delta = new_date - current_date
                         if abs(delta.days) >= move.company_id.propagation_minimum_delta:
-                            old_move_date = datetime.strptime(move.move_dest_id.date_expected, DEFAULT_SERVER_DATETIME_FORMAT)
+                            old_move_date = datetime.strptime(move.move_dest_id.sudo().date_expected, DEFAULT_SERVER_DATETIME_FORMAT)
                             new_move_date = (old_move_date + relativedelta.relativedelta(days=delta.days or 0)).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
                             propagated_changes_dict['date_expected'] = new_move_date
                     #For pushed moves as well as for pulled moves, propagate by recursive call of write().
                     #Note that, for pulled moves we intentionally don't propagate on the procurement.
                     if propagated_changes_dict:
-                        self.write(cr, uid, [move.move_dest_id.id], propagated_changes_dict, context=context)
+                        try:
+                            self.write(cr, uid, [move.move_dest_id.id], propagated_changes_dict, context=context)
+                        except AccessError:
+                            self.write(cr, SUPERUSER_ID, [move.move_dest_id.id], propagated_changes_dict, context=context)
         track_pickings = not context.get('mail_notrack') and any(field in vals for field in ['state', 'picking_id', 'partially_available'])
         if track_pickings:
             to_track_picking_ids = set([move.picking_id.id for move in moves if move.picking_id])
@@ -2460,17 +2465,23 @@ class stock_move(osv.osv):
                 fallback_domain = [('reservation_id', '=', False)]
                 fallback_domain2 = ['&', ('reservation_id', '!=', move.id), ('reservation_id', '!=', False)]
                 prefered_domain_list = [prefered_domain] + [fallback_domain] + [fallback_domain2]
-                dom = main_domain + self.pool.get('stock.move.operation.link').get_specific_domain(cr, uid, record, context=context)
-                quants = quant_obj.quants_get_prefered_domain(cr, uid, ops.location_id, move.product_id, record.qty, move, domain=dom, prefered_domain_list=prefered_domain_list,
-                                                          restrict_lot_id=move.restrict_lot_id.id, restrict_partner_id=move.restrict_partner_id.id, context=context)
+                if move.has_reserved_quant_from_different_company():
+                    # force create new quant if quant from another company is reserved for this move
+                    quants = [(None, record.qty)]
+                    context_move = dict(context, reconcile_negative_quant=False)
+                else:
+                    dom = main_domain + self.pool.get('stock.move.operation.link').get_specific_domain(cr, uid, record, context=context)
+                    quants = quant_obj.quants_get_prefered_domain(cr, uid, ops.location_id, move.product_id, record.qty, move, domain=dom, prefered_domain_list=prefered_domain_list,
+                                                              restrict_lot_id=move.restrict_lot_id.id, restrict_partner_id=move.restrict_partner_id.id, context=context)
+                    context_move = context
                 if ops.product_id:
                     #If a product is given, the result is always put immediately in the result package (if it is False, they are without package)
                     quant_dest_package_id  = ops.result_package_id.id
-                    ctx = context
+                    ctx = context_move
                 else:
                     # When a pack is moved entirely, the quants should not be written anything for the destination package
                     quant_dest_package_id = False
-                    ctx = context.copy()
+                    ctx = context_move.copy()
                     ctx['entire_pack'] = True
                 quant_obj.quants_move(cr, uid, quants, move, ops.location_dest_id, location_from=ops.location_id, lot_id=ops.lot_id.id, owner_id=ops.owner_id.id, src_package_id=ops.package_id.id, dest_package_id=quant_dest_package_id, context=ctx)
 
@@ -2482,6 +2493,7 @@ class stock_move(osv.osv):
                 move_qty[move.id] -= record.qty
         #Check for remaining qtys and unreserve/check move_dest_id in
         move_dest_ids = set()
+        uid_assign, context_assign = uid, context
         for move in self.browse(cr, uid, ids, context=context):
             move_qty_cmp = float_compare(move_qty[move.id], 0, precision_rounding=move.product_id.uom_id.rounding)
             if move_qty_cmp > 0:  # (=In case no pack operations in picking)
@@ -2492,11 +2504,26 @@ class stock_move(osv.osv):
                 prefered_domain_list = [prefered_domain] + [fallback_domain] + [fallback_domain2]
                 self.check_tracking(cr, uid, move, move.restrict_lot_id.id, context=context)
                 qty = move_qty[move.id]
-                quants = quant_obj.quants_get_prefered_domain(cr, uid, move.location_id, move.product_id, qty, move, domain=main_domain, prefered_domain_list=prefered_domain_list, restrict_lot_id=move.restrict_lot_id.id, restrict_partner_id=move.restrict_partner_id.id, context=context)
-                quant_obj.quants_move(cr, uid, quants, move, move.location_dest_id, lot_id=move.restrict_lot_id.id, owner_id=move.restrict_partner_id.id, context=context)
+                if move.has_reserved_quant_from_different_company():
+                    # force create new quant if quant from another company is reserved for this move
+                    quants = [(None, qty)]
+                    context_move = dict(context, reconcile_negative_quant=False)
+                else:
+                    quants = quant_obj.quants_get_prefered_domain(cr, uid, move.location_id, move.product_id, qty, move, domain=main_domain, prefered_domain_list=prefered_domain_list, restrict_lot_id=move.restrict_lot_id.id, restrict_partner_id=move.restrict_partner_id.id, context=context)
+                    context_move = context
+                quant_obj.quants_move(cr, uid, quants, move, move.location_dest_id, lot_id=move.restrict_lot_id.id, owner_id=move.restrict_partner_id.id, context=context_move)
 
             # If the move has a destination, add it to the list to reserve
-            if move.move_dest_id and move.move_dest_id.state in ('waiting', 'confirmed'):
+            try:
+                move_dest_state = move.move_dest_id and move.move_dest_id.state
+            except AccessError:
+                move_dest_state = move.move_dest_id and move.move_dest_id.sudo().state
+                uid_assign = SUPERUSER_ID  # user has no access to 2nd transit move => switch to sudo
+                # trick to reserve quant from company B for stock move in company A:
+                # move becomes Available and, upon Done, creates a new quant in company A
+                # (see move.has_reserved_quant_from_different_company() above)
+                context_assign = dict(context, force_company=move.company_id.id)
+            if move.move_dest_id and move_dest_state in ('waiting', 'confirmed'):
                 move_dest_ids.add(move.move_dest_id.id)
 
             if move.procurement_id:
@@ -2508,10 +2535,10 @@ class stock_move(osv.osv):
         self._check_package_from_moves(cr, uid, ids, context=context)
         #set the move as done
         self.write(cr, uid, ids, {'state': 'done', 'date': time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)}, context=context)
-        self.pool.get('procurement.order').check(cr, uid, list(procurement_ids), context=context)
+        self.pool.get('procurement.order').check(cr, uid_assign, list(procurement_ids), context=context)
         #assign destination moves
         if move_dest_ids:
-            self.action_assign(cr, uid, list(move_dest_ids), context=context)
+            self.action_assign(cr, uid_assign, list(move_dest_ids), context=context_assign)
         #check picking state to set the date_done is needed
         done_picking = []
         for picking in picking_obj.browse(cr, uid, list(pickings), context=context):
@@ -2520,6 +2547,10 @@ class stock_move(osv.osv):
         if done_picking:
             picking_obj.write(cr, uid, done_picking, {'date_done': time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)}, context=context)
         return True
+
+    def has_reserved_quant_from_different_company(self):
+        reserved_quants = self.sudo().reserved_quant_ids
+        return reserved_quants and reserved_quants.mapped('company_id') != self.company_id
 
     def unlink(self, cr, uid, ids, context=None):
         context = context or {}
