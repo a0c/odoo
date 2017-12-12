@@ -302,7 +302,7 @@ class ir_ui_menu(osv.osv):
             context = {}
         res = {}
         menu_ids = set()
-        for menu in self.browse(cr, uid, ids, context=context):
+        for menu in self.browse(cr, uid, ids, context=context).exists():
             menu_ids.add(menu.id)
             ctx = None
             if menu.action and menu.action.type in ('ir.actions.act_window', 'ir.actions.client') and menu.action.context:
