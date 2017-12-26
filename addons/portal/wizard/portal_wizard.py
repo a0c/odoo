@@ -204,11 +204,17 @@ class wizard_user(osv.osv_memory):
         """
         res_users = self.pool.get('res.users')
         create_context = dict(context or {}, noshortcut=True, no_reset_password=True)       # to prevent shortcut creation
+        if wizard_user.partner_id.company_id:
+            company_id = wizard_user.partner_id.company_id.id
+        else:
+            company_id = self.pool['res.company']._company_default_get(cr, uid, 'res.users', context=context)
         values = {
             'email': extract_email(wizard_user.email),
             'login': extract_email(wizard_user.email),
             'partner_id': wizard_user.partner_id.id,
             'groups_id': [(6, 0, [])],
+            'company_id': company_id,
+            'company_ids': [(4, company_id)]
         }
         user_id = res_users.create(cr, uid, values, context=create_context)
         return res_users.browse(cr, uid, user_id, context)
