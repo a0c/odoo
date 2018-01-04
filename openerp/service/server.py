@@ -671,7 +671,7 @@ class Worker(object):
         self.watchdog_time = time.time()
         self.watchdog_pipe = multi.pipe_new()
         # Can be set to None if no watchdog is desired.
-        self.watchdog_timeout = multi.timeout
+        self.watchdog_timeout = self.get_limit_time_real()
         self.ppid = os.getpid()
         self.pid = None
         self.alive = True
@@ -696,6 +696,18 @@ class Worker(object):
             if e[0] not in [errno.EINTR]:
                 raise
 
+    def get_limit_memory_soft(self):
+        return config['limit_memory_soft']
+
+    def get_limit_memory_hard(self):
+        return config['limit_memory_hard']
+
+    def get_limit_time_cpu(self):
+        return config['limit_time_cpu']
+
+    def get_limit_time_real(self):
+        return config['limit_time_real']
+
     def process_limit(self):
         # If our parent changed sucide
         if self.ppid != os.getppid():
@@ -707,24 +719,25 @@ class Worker(object):
             self.alive = False
         # Reset the worker if it consumes too much memory (e.g. caused by a memory leak).
         rss, vms = memory_info(psutil.Process(os.getpid()))
-        if vms > config['limit_memory_soft']:
+        if vms > self.get_limit_memory_soft():
             _logger.info('Worker (%d) virtual memory limit (%s) reached.', self.pid, vms)
             self.alive = False      # Commit suicide after the request.
 
         # VMS and RLIMIT_AS are the same thing: virtual memory, a.k.a. address space
         soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-        resource.setrlimit(resource.RLIMIT_AS, (config['limit_memory_hard'], hard))
+        resource.setrlimit(resource.RLIMIT_AS, (self.get_limit_memory_hard(), hard))
 
         # SIGXCPU (exceeded CPU time) signal handler will raise an exception.
         r = resource.getrusage(resource.RUSAGE_SELF)
         cpu_time = r.ru_utime + r.ru_stime
+        limit_time_cpu = self.get_limit_time_cpu()
         def time_expired(n, stack):
-            _logger.info('Worker (%d) CPU time limit (%s) reached.', self.pid, config['limit_time_cpu'])
+            _logger.info('Worker (%d) CPU time limit (%s) reached.', self.pid, limit_time_cpu)
             # We dont suicide in such case
             raise Exception('CPU time limit exceeded.')
         signal.signal(signal.SIGXCPU, time_expired)
         soft, hard = resource.getrlimit(resource.RLIMIT_CPU)
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu_time + config['limit_time_cpu'], hard))
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_time + limit_time_cpu, hard))
 
     def process_work(self):
         pass
@@ -858,6 +871,18 @@ class WorkerCron(Worker):
         os.nice(10)     # mommy always told me to be nice with others...
         Worker.start(self)
         self.multi.socket.close()
+
+    def get_limit_memory_soft(self):
+        return config['limit_cron_memory_soft']
+
+    def get_limit_memory_hard(self):
+        return config['limit_cron_memory_hard']
+
+    def get_limit_time_cpu(self):
+        return config['limit_cron_time_cpu']
+
+    def get_limit_time_real(self):
+        return config['limit_cron_time_real']
 
 #----------------------------------------------------------
 # start/stop public api

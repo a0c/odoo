@@ -325,6 +325,18 @@ class configmanager(object):
             group.add_option("--limit-time-real", dest="limit_time_real", my_default=120,
                              help="Maximum allowed Real time per request (default 120).",
                              type="int")
+            group.add_option("--limit-cron-memory-soft", dest="limit_cron_memory_soft", my_default=2048 * 1024 * 1024,
+                             help="Maximum allowed virtual memory per cron worker, when reached the worker be reset after the current request (default 671088640 aka 640MB).",
+                             type="int")
+            group.add_option("--limit-cron-memory-hard", dest="limit_cron_memory_hard", my_default=2560 * 1024 * 1024,
+                             help="Maximum allowed virtual memory per cron worker, when reached, any memory allocation will fail (default 805306368 aka 768MB).",
+                             type="int")
+            group.add_option("--limit-cron-time-cpu", dest="limit_cron_time_cpu", my_default=60,
+                             help="Maximum allowed CPU time per cron request (default 60).",
+                             type="int")
+            group.add_option("--limit-cron-time-real", dest="limit_cron_time_real", my_default=120,
+                             help="Maximum allowed Real time per cron request (default 120).",
+                             type="int")
             group.add_option("--limit-request", dest="limit_request", my_default=8192,
                              help="Maximum number of request to be processed per worker (default 8192).",
                              type="int")
@@ -447,8 +459,8 @@ class configmanager(object):
 
         posix_keys = [
             'auto_reload', 'workers',
-            'limit_memory_hard', 'limit_memory_soft',
-            'limit_time_cpu', 'limit_time_real', 'limit_request',
+            'limit_memory_hard', 'limit_memory_soft', 'limit_cron_memory_hard', 'limit_cron_memory_soft',
+            'limit_time_cpu', 'limit_time_real', 'limit_cron_time_cpu', 'limit_cron_time_real', 'limit_request',
         ]
 
         if os.name == 'posix':
