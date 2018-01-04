@@ -30,6 +30,11 @@ import threading
 
 import psycopg2
 
+try:
+    from setproctitle import getproctitle
+except ImportError:
+    getproctitle = lambda x: None
+
 import openerp
 import sql_db
 import tools
@@ -113,10 +118,17 @@ LEVEL_COLOR_MAPPING = {
     logging.CRITICAL: (WHITE, RED),
 }
 
+
+def is_cron_proc(proctitle):
+    return proctitle and proctitle[:7] == 'openerp' and proctitle[-1] != ' '
+
+
 class DBFormatter(logging.Formatter):
     def format(self, record):
         record.pid = os.getpid()
         record.dbname = getattr(threading.currentThread(), 'dbname', '?')
+        if tools.config['syslog']:
+            record.cron = 'Cron' if is_cron_proc(getproctitle()) else ''
         return logging.Formatter.format(self, record)
 
 class ColoredFormatter(DBFormatter):
@@ -148,7 +160,7 @@ def init_logger():
             handler = logging.handlers.SysLogHandler('/var/run/log')
         else:
             handler = logging.handlers.SysLogHandler('/dev/log')
-        format = release.product_name + (not tools.config['xmlrpc'] and 'Cron' or '') + ' ' + format
+        format = release.product_name + '%(cron)s ' + format
 
     elif tools.config['logfile']:
         # LogFile Handler
