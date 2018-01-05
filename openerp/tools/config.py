@@ -340,6 +340,9 @@ class configmanager(object):
             group.add_option("--limit-request", dest="limit_request", my_default=8192,
                              help="Maximum number of request to be processed per worker (default 8192).",
                              type="int")
+            group.add_option("--programname", dest="programname", my_default=release.product_name,
+                             help="Log prefix used by syslog for sending logs to different files (default Odoo).",
+                             type="string")
             parser.add_option_group(group)
 
         # Copy all optparse options (i.e. MyOption) into self.options.

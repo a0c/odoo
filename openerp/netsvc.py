@@ -160,7 +160,7 @@ def init_logger():
             handler = logging.handlers.SysLogHandler('/var/run/log')
         else:
             handler = logging.handlers.SysLogHandler('/dev/log')
-        format = release.product_name + '%(cron)s ' + format
+        format = tools.config['programname'] + '%(cron)s ' + format
 
     elif tools.config['logfile']:
         # LogFile Handler
