@@ -3396,8 +3396,8 @@ class BaseModel(object):
                     ))
             # store an access error exception in existing records
             exc = AccessError(
-                _('The requested operation cannot be completed due to security restrictions. Please contact your system administrator.\n\n(Document type: %s, Operation: %s, IDs: %s)') % \
-                (self._name, 'read', missing)
+                _('The requested operation cannot be completed due to security restrictions. Please contact your system administrator.\n\n(Document type: %s, Operation: %s, IDs: %s, User: %s)') % \
+                (self._name, 'read', missing, user)
             )
             forbidden = missing.exists()
             forbidden._cache.update(FailedValue(exc))
