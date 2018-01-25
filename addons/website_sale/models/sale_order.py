@@ -130,12 +130,32 @@ class sale_order_line(osv.Model):
 class website(orm.Model):
     _inherit = 'website'
 
+    def _get_pricelist_id(self, cr, uid, ids, name, args, context=None):
+        res = {}
+        pricelist = self.get_current_pricelist(cr, uid, context=context)
+        for data in self.browse(cr, uid, ids, context=context):
+            res[data.id] = pricelist.id
+        return res
+
     _columns = {
-        'pricelist_id': fields.related('user_id','partner_id','property_product_pricelist',
+        'pricelist_id': fields.function(_get_pricelist_id,
             type='many2one', relation='product.pricelist', string='Default Pricelist'),
         'currency_id': fields.related('pricelist_id','currency_id',
             type='many2one', relation='res.currency', string='Default Currency'),
     }
+
+    def get_current_pricelist(self, cr, uid, context=None):
+        """
+        :returns: The current pricelist record
+        """
+        pl_id = request.session.get('website_sale_current_pl')
+        if pl_id:
+            return self.pool['product.pricelist'].browse(cr, uid, [pl_id], context=context)[0]
+        else:
+            partner = self.pool['res.users'].browse(cr, SUPERUSER_ID, uid, context=context).partner_id
+            pl = partner.with_context(force_company=partner.company_id.id).property_product_pricelist
+            request.session['website_sale_current_pl'] = pl.id
+        return pl
 
     def sale_product_domain(self, cr, uid, ids, context=None):
         return [("sale_ok", "=", True)]

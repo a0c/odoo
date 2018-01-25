@@ -113,7 +113,7 @@ def get_pricelist():
         pricelist = sale_order.pricelist_id
     else:
         partner = pool['res.users'].browse(cr, SUPERUSER_ID, uid, context=context).partner_id
-        pricelist = partner.property_product_pricelist
+        pricelist = partner.with_context(force_company=partner.company_id.id).property_product_pricelist
     if not pricelist:
         _logger.error('Fail to find pricelist for partner "%s" (id %s)', partner.name, partner.id)
     return pricelist
