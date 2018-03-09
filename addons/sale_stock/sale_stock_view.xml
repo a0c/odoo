@@ -80,13 +80,27 @@
                         </group>
                    </xpath>
                    <xpath expr="//field[@name='order_line']/form/group/group/field[@name='price_unit']" position="before">
-                        <field name="route_id" groups="sale_stock.group_route_so_lines"/>
+                        <field name="route_id" invisible="1"/>
                    </xpath>
                    <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="before">
-                       <field name="route_id" groups="sale_stock.group_route_so_lines"/>
+                       <field name="route_id" invisible="1"/>
                    </xpath>
                 </data>
            </field>
+        </record>
+        <record id="view_order_form_inherit_route" model="ir.ui.view">
+          <field name="name">sale.order.form.sale.stock</field>
+          <field name="model">sale.order</field>
+          <field name="inherit_id" ref="sale_stock.view_order_form_inherit"/>
+          <field name="groups_id" eval="[(6, 0, [ref('sale_stock.group_route_so_lines')])]"/>
+          <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/form//field[@name='route_id']" position="attributes">
+              <attribute name="invisible"/>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/tree/field[@name='route_id']" position="attributes">
+              <attribute name="invisible"/>
+            </xpath>
+         </field>
         </record>
 
         <record id="view_res_partner_tree_type" model="ir.ui.view">
@@ -134,21 +148,43 @@
             <field name="arch" type="xml">
                 <data>
                    <xpath expr="//field[@name='price_unit']" position="before">
-                       <field name="route_id" groups="sale_stock.group_route_so_lines" />
+                       <field name="route_id" invisible="1"/>
                    </xpath>
                 </data>
            </field>
         </record>
-        
+        <record id="view_order_form_inherit2_route" model="ir.ui.view">
+          <field name="name">sale.order.line.form.sale.stock.location</field>
+          <field name="model">sale.order.line</field>
+          <field name="inherit_id" ref="sale_stock.view_order_form_inherit2"/>
+          <field name="groups_id" eval="[(6, 0, [ref('sale_stock.group_route_so_lines')])]"/>
+          <field name="arch" type="xml">
+            <xpath expr="//field[@name='route_id']" position="attributes">
+              <attribute name="invisible"/>
+            </xpath>
+         </field>
+        </record>
+
         <record id="view_order_line_tree_inherit" model="ir.ui.view">
             <field name="name">sale.order.line.tree.sale.stock.location</field>
             <field name="inherit_id" ref="sale.view_order_line_tree"/>
             <field name="model">sale.order.line</field>
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='price_subtotal']" position="before">
-                    <field name="route_id" groups="sale_stock.group_route_so_lines"/>
+                    <field name="route_id" invisible="1"/>
                 </xpath>
             </field>
+        </record>
+        <record id="view_order_line_tree_inherit_route" model="ir.ui.view">
+          <field name="name">sale.order.line.tree.sale.stock.location</field>
+          <field name="inherit_id" ref="sale_stock.view_order_line_tree_inherit"/>
+          <field name="groups_id" eval="[(6, 0, [ref('sale_stock.group_route_so_lines')])]"/>
+          <field name="model">sale.order.line</field>
+          <field name="arch" type="xml">
+            <xpath expr="//field[@name='route_id']" position="attributes">
+              <attribute name="invisible"/>
+            </xpath>
+          </field>
         </record>
     </data>
 </openerp>
