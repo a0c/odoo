@@ -3380,9 +3380,10 @@ instance.web.form.CompletionFieldMixin = {
             self.last_search = data;
             // possible selections for the m2o
             var values = _.map(data, function(x) {
-                x[1] = x[1].split("\n")[0];
+                var parts = x[1].split("\n");
+                x[1] = parts[0];
                 return {
-                    label: _.str.escapeHTML(x[1]),
+                    label: _.str.escapeHTML(x[1]) + (parts.length > 1 ? "<span style='float:right;'>" + _.str.escapeHTML(parts[1]) + "</span>" : ''),
                     value: x[1],
                     name: x[1],
                     id: x[0],
