@@ -4498,6 +4498,7 @@ instance.web.form.One2ManyListView = instance.web.ListView.extend({
                     },
                     parent_view: self.o2m.view,
                     child_name: self.o2m.name,
+                    form_large: self.o2m.options.form_large || false,
                     form_view_options: {'not_interactible_on_create':true}
                 },
                 self.o2m.build_domain(),
@@ -5288,6 +5289,7 @@ instance.web.form.AbstractFormPopup = instance.web.Widget.extend({
         var dialog = new instance.web.Dialog(this, {
             dialogClass: 'oe_act_window',
             title: this.options.title || "",
+            start_large: this.options.form_large || false,
         }, this.$el).open();
         dialog.on('closing', this, function (e){
             self.check_exit(true);
