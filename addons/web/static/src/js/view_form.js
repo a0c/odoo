@@ -506,6 +506,17 @@ instance.web.FormView = instance.web.View.extend(instance.web.form.FieldManagerM
                     var parent_name = self.dataset.parent_view.get_field_desc(self.dataset.child_name).relation_field;
                     context.add({field_parent: parent_name});
                 }
+                // pass dataset.to_create records to context (records previously created with Save & New button)
+                if (self.ViewManager.__parentedParent.dataset !== undefined) {
+                    var to_create = self.ViewManager.__parentedParent.dataset.to_create;
+                    if (to_create !== undefined) {
+                        var to_create_recs = [];
+                        _.each(to_create, function(x){
+                            to_create_recs.push([0, 0, x['values']])
+                        });
+                        context.add({to_create_recs: to_create_recs});
+                    }
+                }
 
                 if (self.datarecord.id && !instance.web.BufferedDataSet.virtual_id_regex.test(self.datarecord.id)) {
                     // In case of a o2m virtual id, we should pass an empty ids list
@@ -3380,9 +3391,10 @@ instance.web.form.CompletionFieldMixin = {
             self.last_search = data;
             // possible selections for the m2o
             var values = _.map(data, function(x) {
-                x[1] = x[1].split("\n")[0];
+                var parts = x[1].split("\n");
+                x[1] = parts[0];
                 return {
-                    label: _.str.escapeHTML(x[1]),
+                    label: _.str.escapeHTML(x[1]) + (parts.length > 1 ? "<span style='float:right;'>" + _.str.escapeHTML(parts[1]) + "</span>" : ''),
                     value: x[1],
                     name: x[1],
                     id: x[0],
@@ -4497,6 +4509,7 @@ instance.web.form.One2ManyListView = instance.web.ListView.extend({
                     },
                     parent_view: self.o2m.view,
                     child_name: self.o2m.name,
+                    form_large: self.o2m.options.form_large || false,
                     form_view_options: {'not_interactible_on_create':true}
                 },
                 self.o2m.build_domain(),
@@ -5287,6 +5300,7 @@ instance.web.form.AbstractFormPopup = instance.web.Widget.extend({
         var dialog = new instance.web.Dialog(this, {
             dialogClass: 'oe_act_window',
             title: this.options.title || "",
+            start_large: this.options.form_large || false,
         }, this.$el).open();
         dialog.on('closing', this, function (e){
             self.check_exit(true);
