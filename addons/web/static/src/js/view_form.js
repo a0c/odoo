@@ -506,6 +506,17 @@ instance.web.FormView = instance.web.View.extend(instance.web.form.FieldManagerM
                     var parent_name = self.dataset.parent_view.get_field_desc(self.dataset.child_name).relation_field;
                     context.add({field_parent: parent_name});
                 }
+                // pass dataset.to_create records to context (records previously created with Save & New button)
+                if (self.ViewManager.__parentedParent.dataset !== undefined) {
+                    var to_create = self.ViewManager.__parentedParent.dataset.to_create;
+                    if (to_create !== undefined) {
+                        var to_create_recs = [];
+                        _.each(to_create, function(x){
+                            to_create_recs.push([0, 0, x['values']])
+                        });
+                        context.add({to_create_recs: to_create_recs});
+                    }
+                }
 
                 if (self.datarecord.id && !instance.web.BufferedDataSet.virtual_id_regex.test(self.datarecord.id)) {
                     // In case of a o2m virtual id, we should pass an empty ids list
