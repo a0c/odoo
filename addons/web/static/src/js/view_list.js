@@ -1,3 +1,46 @@
+// isAfter / isBefore
+(function($) {
+    $.fn.isAfter = function(sel){
+        return this.prevAll().filter(sel).length !== 0;
+    };
+
+    $.fn.isBefore= function(sel){
+        return this.nextAll().filter(sel).length !== 0;
+    };
+})(jQuery);
+// focus search input
+function focus_search_input() {
+    var input = $(".oe_searchview_input");
+    input = $(input[input.length - 1]);
+    input.focus();
+}
+// copy cell text to clipboard
+function fallbackCopyTextToClipboard(text) {
+    var textArea = document.createElement("textarea");
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+        var successful = document.execCommand('copy');
+        if (!successful)
+            console.log('Fallback: Copying text command was unsuccessful');
+    } catch (err) {
+        console.error('Fallback: Oops, unable to copy', err);
+    }
+
+    document.body.removeChild(textArea);
+}
+function copyTextToClipboard(text) {
+    if (!navigator.clipboard) {
+        fallbackCopyTextToClipboard(text);
+        return;
+    }
+    navigator.clipboard.writeText(text).then(function() {}, function(err) {
+        console.error('Async: Could not copy text: ', err);
+    });
+}
 (function() {
 
 var instance = openerp;
@@ -268,7 +311,7 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
         // Selecting records
         this.$el.find('.oe_list_record_selector').click(function(){
             self.$el.find('.oe_list_record_selector input').prop('checked',
-                self.$el.find('.oe_list_record_selector').prop('checked')  || false);
+                self.$el.find('.oe_list_record_selector').prop('checked')  || false).change();
             var selection = self.groups.get_selection();
             $(self.groups).trigger(
                 'selected', [selection.ids, selection.records]);
@@ -952,6 +995,7 @@ instance.web.ListView.List = instance.web.Class.extend( /** @lends instance.web.
         this.columns = opts.columns;
         this.dataset = opts.dataset;
         this.records = opts.records;
+        this.selection_start = undefined;
 
         this.record_callbacks = {
             'remove': function (event, record) {
@@ -998,6 +1042,14 @@ instance.web.ListView.List = instance.web.Class.extend( /** @lends instance.web.
         }, this);
 
         this.$current = $('<tbody>')
+            .delegate('input', 'change', function (e) {
+                var $input = $(e.currentTarget);
+                var checked = $input.prop('checked');
+                if (checked)
+                    $input.closest('tr').addClass('oe_list_record_selected');
+                else
+                    $input.closest('tr').removeClass('oe_list_record_selected');
+            })
             .delegate('input[readonly=readonly]', 'click', function (e) {
                 /*
                     Against all logic and sense, as of right now @readonly
@@ -1045,6 +1097,49 @@ instance.web.ListView.List = instance.web.Class.extend( /** @lends instance.web.
             })
             .delegate('a', 'click', function (e) {
                 e.stopPropagation();
+            })
+            .delegate('td', 'click', function (e) {
+                var checkbox, deselected = false;
+                function toggle_checkbox(tr) {
+                    checkbox = tr.find('th.oe_list_record_selector input');
+                    if (checkbox.prop('checked')) deselected = true;
+                    checkbox.prop('checked', checkbox.prop('checked') ? false : 'checked').change();
+                    tr.find('th.oe_list_record_selector').click();  // enable/disable Select button on x2m fields
+                    focus_search_input();  // against ugly text/cell selection in Firefox
+                }
+                if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.stopPropagation();
+                    toggle_checkbox($(e.currentTarget).closest('tr'));
+                    return;
+                }
+                if (e.shiftKey && !e.ctrlKey && !e.altKey) {
+                    e.stopPropagation();
+                    $(document).keyup(function(event) {
+                        if (event.keyCode === 16) {  // ShiftUp
+                            self.selection_start = undefined;
+                        }
+                        $(document).off('keyup');
+                        focus_search_input();  // against ugly text/cell selection in Firefox
+                    });
+                    var $tr = $(e.currentTarget).closest('tr'), $tr_end = $tr;
+                    if (self.selection_start === undefined) {
+                        self.selection_start = $tr;
+                        toggle_checkbox($tr);
+                    } else {
+                        var backward = $tr.isAfter(self.selection_start);
+                        while ($tr.data('id') !== self.selection_start.data('id')) {
+                            toggle_checkbox($tr);
+                            $tr = backward ? $tr.prev() : $tr.next();
+                        }
+                        self.selection_start = $tr_end;
+                    }
+                    return;
+                }
+                if (e.ctrlKey && e.shiftKey) {
+                    e.stopPropagation();
+                    copyTextToClipboard(e.currentTarget.innerText);
+                    focus_search_input();  // against ugly text/cell selection in Firefox + for convenience
+                }
             })
             .delegate('tr', 'click', function (e) {
                 var row_id = self.row_id(e.currentTarget);

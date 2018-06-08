@@ -2802,7 +2802,7 @@
   filter: alpha(opacity=100);
   opacity: 1;
 }
-.openerp .oe_list_content > tbody > tr:nth-child(odd) {
+.openerp .oe_list_content > tbody > tr:nth-child(odd):not(.oe_list_record_selected) {
   background-color: #f0f0fa;
   background-color: #efeff8;
   background-image: -webkit-gradient(linear, left top, left bottom, from(#f0f0fa), to(#eeeef6));
@@ -3456,4 +3456,7 @@ body {
   .oe_secondary_menus_container {
     position: static !important;
   }
+}
+.oe_list_record_selected {
+  background: lightblue;
 }

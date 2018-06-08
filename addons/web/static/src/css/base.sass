@@ -2280,7 +2280,7 @@ $sheet-padding: 16px
                     @include opacity()
                 > td.oe_list_field_boolean input:-moz-read-only
                     @include opacity(1.0)
-            > tr:nth-child(odd)
+            > tr:nth-child(odd):not(.oe_list_record_selected)
                 background-color: #f0f0fa
                 @include vertical-gradient(#f0f0fa, #eeeef6)
 
@@ -2831,3 +2831,5 @@ body
 
 // au BufWritePost,FileWritePost *.sass :!sass --style expanded --line-numbers <afile> > "%:p:r.css"
 // vim:tabstop=4:shiftwidth=4:softtabstop=4:fdm=marker:
+.oe_list_record_selected
+    background: lightblue
