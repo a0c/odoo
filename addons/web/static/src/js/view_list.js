@@ -396,14 +396,19 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
         if (!this.sidebar && this.options.$sidebar) {
             this.sidebar = new instance.web.Sidebar(this);
             this.sidebar.appendTo(this.options.$sidebar);
-            this.sidebar.add_items('other', _.compact([
-                { label: _t("Export"), callback: this.on_sidebar_export },
-                self.is_action_enabled('delete') && { label: _t('Delete'), callback: this.do_delete_selected }
-            ]));
-            this.sidebar.add_toolbar(this.fields_view.toolbar);
-            var sidebar_always_show = this.get_view_attr('sidebar_always_show');
-            if (!sidebar_always_show)
-                this.sidebar.$el.hide();
+            new instance.web.Model('res.users')
+                .call('has_group', ['base.group_portal']).done(function (cant_export) {
+                    self.sidebar.add_items('other', _.compact(cant_export ? [
+                        self.is_action_enabled('delete') && { label: _t('Delete'), callback: self.do_delete_selected }
+                    ] : [
+                        { label: _t("Export"), callback: self.on_sidebar_export },
+                        self.is_action_enabled('delete') && { label: _t('Delete'), callback: self.do_delete_selected }
+                    ]));
+                    self.sidebar.add_toolbar(self.fields_view.toolbar);
+                    var sidebar_always_show = self.get_view_attr('sidebar_always_show');
+                    if (!sidebar_always_show)
+                        self.sidebar.$el.hide();
+            });
         }
         //Sort
         var default_order = this.fields_view.arch.attrs.default_order,
