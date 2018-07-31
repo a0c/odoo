@@ -580,6 +580,7 @@ def append_content_to_html(html, content, plaintext=True, preserve=False, contai
         :param bool preserve: if content is plaintext, wrap it into a <pre>
             instead of converting it into html
     """
+    content = content or ''
     html = ustr(html)
     if plaintext and preserve:
         content = u'\n<pre>%s</pre>\n' % ustr(content)
