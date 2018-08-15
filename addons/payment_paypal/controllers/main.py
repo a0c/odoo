@@ -6,6 +6,7 @@ except ImportError:
     import json
 import logging
 import pprint
+import time
 import urllib2
 import werkzeug
 
@@ -18,6 +19,8 @@ _logger = logging.getLogger(__name__)
 class PaypalController(http.Controller):
     _notify_url = '/payment/paypal/ipn/'
     _return_url = '/payment/paypal/dpn/'
+    # _return_url = '/shop/confirmation/'
+    # _return_url = '/shop/payment/validate/'
     _cancel_url = '/payment/paypal/cancel/'
 
     def _get_return_url(self, **post):
@@ -71,12 +74,57 @@ class PaypalController(http.Controller):
         self.paypal_validate_data(**post)
         return ''
 
-    @http.route('/payment/paypal/dpn', type='http', auth="none", methods=['POST'])
+    def paypal_wait_for_ipn(self, **post):
+        cr, uid, context = request.cr, request.uid, request.context
+        reference = post.get('item_number')
+        tx_ids = []
+        if reference:
+            tx_ids = request.registry['payment.transaction'].search(cr, uid, [('reference', '=', reference)], context=context)
+        if not reference or not tx_ids:
+            tx = request.website.sale_get_transaction()
+            tx_ids = tx and tx.ids
+        _logger.info('TX_IDS: %s' % str(tx_ids))
+        if tx_ids:
+            sleep_seconds = 0.2
+            sleep_count = 15.0 / sleep_seconds
+            _logger.info('Waiting for IPN to arrive...')
+            while sleep_count > 0:
+                tx = request.registry['payment.transaction'].browse(cr, uid, tx_ids[0], context=context)
+                if tx.state == 'done':
+                    _logger.info('IPN received. Slept %s seconds.', sleep_count * sleep_seconds)
+                    break
+                # todo: this doesn't help :(
+                tx.invalidate_cache(['state'], [tx.id])
+
+                time.sleep(sleep_seconds)
+                sleep_count -= 1
+            _logger.info('IPN not received. Terminating sleep.')
+
+    # def paypal_wait_for_ipn(self, **post):
+    #     cr, uid, context = request.cr, request.uid, request.context
+    #     reference = post.get('item_number')
+    #     if reference:
+    #         tx_ids = request.registry['payment.transaction'].search(cr, uid, [('reference', '=', reference)], context=context)
+    #         if tx_ids:
+    #             sleep_seconds = 0.2
+    #             sleep_count = 15.0 / sleep_seconds
+    #             _logger.info('Waiting for IPN to arrive...')
+    #             while sleep_count > 0:
+    #                 tx = request.registry['payment.transaction'].browse(cr, uid, tx_ids[0], context=context)
+    #                 if tx.state == 'done':
+    #                     _logger.info('IPN received. Slept %s seconds.', sleep_count * sleep_seconds)
+    #                     break
+    #                 tx.invalidate_cache(['state'], [tx.id])
+    #                 time.sleep(sleep_seconds)
+    #                 sleep_count -= 1
+    #             _logger.info('IPN not received. Terminating sleep.')
+
+    @http.route('/payment/paypal/dpn', type='http', auth="none", methods=['POST', 'GET'])
     def paypal_dpn(self, **post):
         """ Paypal DPN """
-        _logger.info('Beginning Paypal DPN form_feedback with post data %s', pprint.pformat(post))  # debug
+        _logger.info('Beginning [%s] Paypal DPN form_feedback with post data %s', request.httprequest.method, pprint.pformat(post))  # debug
         return_url = self._get_return_url(**post)
-        self.paypal_validate_data(**post)
+        self.paypal_wait_for_ipn(**post)
         return werkzeug.utils.redirect(return_url)
 
     @http.route('/payment/paypal/cancel', type='http', auth="none")

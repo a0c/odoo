@@ -247,6 +247,10 @@ class TxPaypal(osv.Model):
         if status in ['Completed', 'Processed']:
             _logger.info('Validated Paypal payment for tx %s: set as done' % (tx.reference))
             data.update(state='done', date_validate=data.get('payment_date', fields.datetime.now()))
+            # todo: this doesn't help :(
+            # res = tx.write(data)
+            # cr.commit()
+            # return res
             return tx.write(data)
         elif status in ['Pending', 'Expired']:
             _logger.info('Received notification for Paypal payment %s: set as pending' % (tx.reference))
