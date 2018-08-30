@@ -36,6 +36,7 @@ TYPE2FIELD = {
     'boolean': 'value_integer',
     'integer': 'value_integer',
     'text': 'value_text',
+    'html': 'value_text',
     'binary': 'value_binary',
     'many2one': 'value_reference',
     'date': 'value_datetime',
@@ -65,6 +66,7 @@ class ir_property(osv.osv):
                                    ('boolean', 'Boolean'),
                                    ('integer', 'Integer'),
                                    ('text', 'Text'),
+                                   ('html', 'Html'),
                                    ('binary', 'Binary'),
                                    ('many2one', 'Many2One'),
                                    ('date', 'Date'),
@@ -122,7 +124,7 @@ class ir_property(osv.osv):
         return super(ir_property, self).create(cr, uid, self._update_values(cr, uid, None, values), context=context)
 
     def get_by_record(self, cr, uid, record, context=None):
-        if record.type in ('char', 'text', 'selection'):
+        if record.type in ('char', 'text', 'html', 'selection'):
             return record.value_text
         elif record.type == 'float':
             return record.value_float
@@ -167,7 +169,7 @@ class ir_property(osv.osv):
         cid = context.get('force_company')
         if not cid:
             company = self.pool.get('res.company')
-            cid = company._company_default_get(cr, uid, model, res[0], context=context)
+            cid = company._company_default_get(cr, context.get('uid', uid), model, res[0], context=context)
 
         return [('fields_id', '=', res[0]), ('company_id', 'in', [cid, False])]
 
@@ -226,7 +228,7 @@ class ir_property(osv.osv):
         # retrieve the properties corresponding to the given record ids
         self._cr.execute("SELECT id FROM ir_model_fields WHERE name=%s AND model=%s", (name, model))
         field_id = self._cr.fetchone()[0]
-        company_id = self.env.context.get('force_company') or self.env['res.company']._company_default_get(model, field_id)
+        company_id = self.env.context.get('force_company') or self.env['res.company'].sudo(user=self._context.get('uid', self._uid))._company_default_get(model, field_id)
         refs = {('%s,%s' % (model, id)): id for id in values}
         props = self.search([
             ('fields_id', '=', field_id),
