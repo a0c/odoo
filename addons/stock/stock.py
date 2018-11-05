@@ -3854,7 +3854,7 @@ class stock_location_path(osv.osv):
             move_obj.write(cr, uid, [move.id], {
                 'move_dest_id': move_id,
             })
-            move_obj.action_confirm(cr, uid, [move_id], context=None)
+            move_obj.action_confirm(cr, uid, [move_id], context=context)
 
 
 # -------------------------
