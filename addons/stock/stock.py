@@ -239,7 +239,7 @@ class stock_location_route(osv.osv):
         if 'active' in vals:
             push_ids = []
             pull_ids = []
-            for route in self.browse(cr, uid, ids, context=context):
+            for route in self.browse(cr, uid, ids, context=dict(context, active_test=False)):
                 if route.push_ids:
                     push_ids += [r.id for r in route.push_ids if r.active != vals['active']]
                 if route.pull_ids:
