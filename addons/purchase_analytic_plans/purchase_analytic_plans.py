@@ -19,6 +19,8 @@
 #
 ##############################################################################
 
+import time
+
 from openerp.osv import fields, osv
 
 
@@ -37,6 +39,12 @@ class purchase_order(osv.osv):
     def _prepare_inv_line(self, cr, uid, account_id, order_line, context=None):
         res = super(purchase_order, self)._prepare_inv_line(cr, uid, account_id, order_line, context=context)
         res['analytics_id'] = order_line.analytics_id.id
+        if not res['analytics_id']:
+            rec = self.pool.get('account.analytic.default').account_get(
+                cr, uid, order_line.product_id.id, order_line.order_id.partner_id.id, order_line.order_id.validator.id,
+                time.strftime('%Y-%m-%d'), order_line.order_id.company_id.id, context=context)
+            if rec:
+                res['analytics_id'] = rec.analytics_id.id
         return res
 
 
