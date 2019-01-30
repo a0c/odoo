@@ -38,4 +38,15 @@ class sale_order_line(osv.osv):
         return create_ids
 
 
+class stock_move(osv.Model):
+    _inherit = 'stock.move'
+
+    def _create_invoice_line_from_vals(self, cr, uid, move, invoice_line_vals, context=None):
+        """ set sale line's analytics distribution on the invoice line,
+            thus overriding both the default distribution and sale's analytic account """
+        sale_line = move.procurement_id.sale_line_id
+        if sale_line.analytics_id:
+            invoice_line_vals['analytics_id'] = sale_line.analytics_id.id
+        return super(stock_move, self)._create_invoice_line_from_vals(cr, uid, move, invoice_line_vals, context=context)
+
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

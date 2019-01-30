@@ -451,6 +451,21 @@ class sale_order_line(osv.osv):
         return create_ids
 
 
+class stock_move(osv.Model):
+    _inherit = 'stock.move'
+
+    def _create_invoice_line_from_vals(self, cr, uid, move, invoice_line_vals, context=None):
+        """ set the default analytics distribution on the invoice line,
+            unless analytic account specified on SO (account_analytic_id) """
+        partner_id = self.pool['account.invoice'].browse(cr, uid, invoice_line_vals.get('invoice_id'), context=context).partner_id.id
+        if not invoice_line_vals.get('analytics_id') and not invoice_line_vals.get('account_analytic_id'):
+            rec = self.pool['account.analytic.default'].account_get(
+                cr, uid, move.product_id.id, partner_id, uid, time.strftime('%Y-%m-%d'),
+                company_id=move.company_id.id, context=context)
+            if rec:
+                invoice_line_vals.update({'analytics_id': rec.analytics_id.id})
+        return super(stock_move, self)._create_invoice_line_from_vals(cr, uid, move, invoice_line_vals, context=context)
+
 
 class account_bank_statement(osv.osv):
     _inherit = "account.bank.statement"
