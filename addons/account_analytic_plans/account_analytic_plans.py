@@ -455,10 +455,9 @@ class stock_move(osv.Model):
     _inherit = 'stock.move'
 
     def _create_invoice_line_from_vals(self, cr, uid, move, invoice_line_vals, context=None):
-        """ set the default analytics distribution on the invoice line,
-            unless analytic account specified on SO (account_analytic_id) """
+        """ set the default analytics distribution on the invoice line """
         partner_id = self.pool['account.invoice'].browse(cr, uid, invoice_line_vals.get('invoice_id'), context=context).partner_id.id
-        if not invoice_line_vals.get('analytics_id') and not invoice_line_vals.get('account_analytic_id'):
+        if not invoice_line_vals.get('analytics_id'):
             rec = self.pool['account.analytic.default'].account_get(
                 cr, uid, move.product_id.id, partner_id, uid, time.strftime('%Y-%m-%d'),
                 company_id=move.company_id.id, context=context)
