@@ -48,6 +48,10 @@ class sale_order_line(osv.osv):
             i = i + 1
         return create_ids
 
+    @api.multi
+    def get_analytics(self):
+        return self.analytics_id or self.order_id.analytics_id or self.analytics_default().analytics_id
+
 
 class stock_move(osv.Model):
     _inherit = 'stock.move'
