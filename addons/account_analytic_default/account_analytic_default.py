@@ -57,7 +57,7 @@ class account_analytic_default(osv.osv):
             domain += ['|', ('date_start', '<=', date), ('date_start', '=', False)]
             domain += ['|', ('date_stop', '>=', date), ('date_stop', '=', False)]
         best_index = -1
-        res = False
+        res = self.browse(cr, uid, context=context)
         for rec in self.browse(cr, uid, self.search(cr, uid, domain, context=context), context=context):
             index = 0
             if rec.product_id: index += 1
@@ -79,10 +79,7 @@ class account_invoice_line(osv.osv):
     def product_id_change(self, cr, uid, ids, product, uom_id, qty=0, name='', type='out_invoice', partner_id=False, fposition_id=False, price_unit=False, currency_id=False, company_id=None, context=None):
         res_prod = super(account_invoice_line, self).product_id_change(cr, uid, ids, product, uom_id, qty, name, type, partner_id, fposition_id, price_unit, currency_id=currency_id, company_id=company_id, context=context)
         rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=company_id, context=context)
-        if rec:
-            res_prod['value'].update({'account_analytic_id': rec.analytic_id.id})
-        else:
-            res_prod['value'].update({'account_analytic_id': False})
+        res_prod['value'].update({'account_analytic_id': rec.analytic_id.id})
         return res_prod
 
 
