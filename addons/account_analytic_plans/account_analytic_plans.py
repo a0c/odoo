@@ -438,14 +438,10 @@ class sale_order_line(osv.osv):
     def invoice_line_create(self, cr, uid, ids, context=None):
         create_ids = super(sale_order_line,self).invoice_line_create(cr, uid, ids, context=context)
         inv_line_obj = self.pool.get('account.invoice.line')
-        acct_anal_def_obj = self.pool.get('account.analytic.default')
         if ids:
             sale_line = self.browse(cr, uid, ids[0], context=context)
             for line in inv_line_obj.browse(cr, uid, create_ids, context=context):
-                rec = acct_anal_def_obj.account_get(cr, uid, line.product_id.id,
-                        sale_line.order_id.partner_id.id, uid, time.strftime('%Y-%m-%d'),
-                        sale_line.order_id.company_id.id, context=context)
-
+                rec = sale_line.analytics_default()
                 if rec:
                     inv_line_obj.write(cr, uid, [line.id], {'analytics_id': rec.analytics_id.id}, context=context)
         return create_ids

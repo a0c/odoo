@@ -21,6 +21,7 @@
 
 import time
 
+from openerp import api
 from openerp.osv import fields, osv
 
 class account_analytic_default(osv.osv):
@@ -107,14 +108,20 @@ class sale_order_line(osv.osv):
             return create_ids
         sale_line = self.browse(cr, uid, ids[0], context=context)
         inv_line_obj = self.pool.get('account.invoice.line')
-        anal_def_obj = self.pool.get('account.analytic.default')
 
         for line in inv_line_obj.browse(cr, uid, create_ids, context=context):
-            rec = anal_def_obj.account_get(cr, uid, line.product_id.id, sale_line.order_id.partner_id.id, sale_line.order_id.user_id.id, time.strftime('%Y-%m-%d'), sale_line.order_id.company_id.id, context=context)
-
+            rec = sale_line.analytics_default()
             if rec:
                 inv_line_obj.write(cr, uid, [line.id], {'account_analytic_id': rec.analytic_id.id}, context=context)
         return create_ids
+
+    @api.multi
+    def analytics_default(self):
+        return self.env['account.analytic.default'].account_get(
+            self.product_id.id, self.order_id.partner_id.id, self.order_id.user_id.id,
+            time.strftime('%Y-%m-%d'), self.order_id.company_id.id)
+
+
 class product_product(osv.Model):
     _inherit = 'product.product'
     def _rules_count(self, cr, uid, ids, field_name, arg, context=None):
