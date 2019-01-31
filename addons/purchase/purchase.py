@@ -1194,8 +1194,6 @@ class purchase_order_line(osv.osv):
         product_uom = self.pool.get('product.uom')
         res_partner = self.pool.get('res.partner')
         product_pricelist = self.pool.get('product.pricelist')
-        account_fiscal_position = self.pool.get('account.fiscal.position')
-        account_tax = self.pool.get('account.tax')
 
         # - check for the presence of partner_id and pricelist_id
         #if not partner_id:
@@ -1208,6 +1206,8 @@ class purchase_order_line(osv.osv):
         if partner_id:
             lang = res_partner.browse(cr, uid, partner_id).lang
             context_partner.update( {'lang': lang, 'partner_id': partner_id} )
+        if uid == SUPERUSER_ID:  # for tax filtering + for product/categ properties
+            context_partner.update({'force_company': self.pool['res.users'].browse(cr, uid, [uid]).company_id.id})
         product = product_product.browse(cr, uid, product_id, context=context_partner)
         #call name_get() with partner in the context to eventually match name and description in the seller_ids field
         if not name or not uom_id:
@@ -1265,17 +1265,25 @@ class purchase_order_line(osv.osv):
             else:
                 price = product.standard_price
 
-        if uid == SUPERUSER_ID:
-            company_id = self.pool['res.users'].browse(cr, uid, [uid]).company_id.id
-            taxes = product.supplier_taxes_id.filtered(lambda r: r.company_id.id == company_id)
-        else:
-            taxes = product.supplier_taxes_id
-        fpos = fiscal_position_id and account_fiscal_position.browse(cr, uid, fiscal_position_id, context=context) or False
-        taxes_ids = account_fiscal_position.map_tax(cr, uid, fpos, taxes, context=context)
-        price = self.pool['account.tax']._fix_tax_included_price(cr, uid, price, product.supplier_taxes_id, taxes_ids)
+        price, taxes_ids = self.compute_product_price_taxes(cr, uid, product, fiscal_position_id, price, context)
         res['value'].update({'price_unit': price, 'taxes_id': taxes_ids})
 
         return res
+
+    def compute_product_price_taxes(self, cr, uid, product, fpos_id, price_current, context=None):
+        """ compute product's price and taxes for the given fiscal position """
+        force_company = product._context.get('force_company')
+        assert uid != SUPERUSER_ID or force_company,\
+            'Product MUST have company explicitly forced for properties to work correctly'
+        fpos = self.pool.get('account.fiscal.position').browse(cr, uid, fpos_id, context=context)
+        account = product.property_account_expense or product.categ_id.property_account_expense_categ
+        account = fpos.map_account(account)
+        taxes = product.supplier_taxes_id or account.tax_ids
+        if force_company:  # e.g. when user is SUPERUSER (e.g. called from scheduler's make_po() one day)
+            taxes = taxes.filtered(lambda x: x.company_id.id == force_company)
+        taxes_ids = fpos.map_tax(taxes).ids
+        price = self.pool['account.tax']._fix_tax_included_price(cr, uid, price_current, taxes, taxes_ids)
+        return price, taxes_ids
 
     product_id_change = onchange_product_id
     product_uom_change = onchange_product_uom 
