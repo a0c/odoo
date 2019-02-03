@@ -8,8 +8,16 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
            <xpath expr="//field[@name='order_line']/form//field[@name='tax_id']" position="after">
-               <field name="analytics_id" domain="[('plan_id','&lt;&gt;',False)]" groups="analytic.group_analytic_accounting"/>
+               <field name="analytics_id" domain="[('plan_id','&lt;&gt;',False)]" groups="analytic.group_analytic_accounting"
+                      context="{'load_default_journal_data': 1, 'default_name': parent.name}"/>
            </xpath>
+            <field name="project_id" position="after">
+                <field name="analytics_id" domain="[('plan_id','&lt;&gt;',False)]" groups="analytic.group_analytic_accounting"
+                       context="{'load_default_journal_data': 1, 'default_name': name}"/>
+            </field>
+            <field name="project_id" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
         </field>
     </record>
 

@@ -21,6 +21,7 @@
 
 import time
 
+from openerp import api
 from openerp.osv import fields, osv
 
 class account_analytic_default(osv.osv):
@@ -57,7 +58,7 @@ class account_analytic_default(osv.osv):
             domain += ['|', ('date_start', '<=', date), ('date_start', '=', False)]
             domain += ['|', ('date_stop', '>=', date), ('date_stop', '=', False)]
         best_index = -1
-        res = False
+        res = self.browse(cr, uid, context=context)
         for rec in self.browse(cr, uid, self.search(cr, uid, domain, context=context), context=context):
             index = 0
             if rec.product_id: index += 1
@@ -79,10 +80,7 @@ class account_invoice_line(osv.osv):
     def product_id_change(self, cr, uid, ids, product, uom_id, qty=0, name='', type='out_invoice', partner_id=False, fposition_id=False, price_unit=False, currency_id=False, company_id=None, context=None):
         res_prod = super(account_invoice_line, self).product_id_change(cr, uid, ids, product, uom_id, qty, name, type, partner_id, fposition_id, price_unit, currency_id=currency_id, company_id=company_id, context=context)
         rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=company_id, context=context)
-        if rec:
-            res_prod['value'].update({'account_analytic_id': rec.analytic_id.id})
-        else:
-            res_prod['value'].update({'account_analytic_id': False})
+        res_prod['value'].update({'account_analytic_id': rec.analytic_id.id})
         return res_prod
 
 
@@ -110,14 +108,20 @@ class sale_order_line(osv.osv):
             return create_ids
         sale_line = self.browse(cr, uid, ids[0], context=context)
         inv_line_obj = self.pool.get('account.invoice.line')
-        anal_def_obj = self.pool.get('account.analytic.default')
 
         for line in inv_line_obj.browse(cr, uid, create_ids, context=context):
-            rec = anal_def_obj.account_get(cr, uid, line.product_id.id, sale_line.order_id.partner_id.id, sale_line.order_id.user_id.id, time.strftime('%Y-%m-%d'), context=context)
-
+            rec = sale_line.analytics_default()
             if rec:
                 inv_line_obj.write(cr, uid, [line.id], {'account_analytic_id': rec.analytic_id.id}, context=context)
         return create_ids
+
+    @api.multi
+    def analytics_default(self):
+        return self.env['account.analytic.default'].account_get(
+            self.product_id.id, self.order_id.partner_id.id, self.order_id.user_id.id,
+            time.strftime('%Y-%m-%d'), self.order_id.company_id.id)
+
+
 class product_product(osv.Model):
     _inherit = 'product.product'
     def _rules_count(self, cr, uid, ids, field_name, arg, context=None):

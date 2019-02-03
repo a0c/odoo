@@ -19,6 +19,9 @@
 #
 ##############################################################################
 
+import time
+
+from openerp import api
 from openerp.osv import fields, osv
 
 
@@ -29,6 +32,15 @@ class purchase_order_line(osv.osv):
          'analytics_id':fields.many2one('account.analytic.plan.instance','Analytic Distribution'),
     }
 
+    @api.multi
+    def analytics_default(self):
+        return self.env['account.analytic.default'].account_get(
+            self.product_id.id, self.order_id.partner_id.id, self.order_id.validator.id,
+            time.strftime('%Y-%m-%d'), self.order_id.company_id.id)
+
+    def get_analytics(self):
+        return self.analytics_id or self.analytics_default().analytics_id
+
 
 class purchase_order(osv.osv):
     _name='purchase.order'
@@ -36,7 +48,7 @@ class purchase_order(osv.osv):
 
     def _prepare_inv_line(self, cr, uid, account_id, order_line, context=None):
         res = super(purchase_order, self)._prepare_inv_line(cr, uid, account_id, order_line, context=context)
-        res['analytics_id'] = order_line.analytics_id.id
+        res['analytics_id'] = order_line.get_analytics().id
         return res
 
 

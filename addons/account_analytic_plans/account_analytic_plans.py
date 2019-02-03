@@ -304,8 +304,8 @@ class account_invoice_line(osv.osv):
 
     def product_id_change(self, cr, uid, ids, product, uom_id, qty=0, name='', type='out_invoice', partner_id=False, fposition_id=False, price_unit=False, currency_id=False, company_id=None, context=None):
         res_prod = super(account_invoice_line, self).product_id_change(cr, uid, ids, product, uom_id, qty, name, type, partner_id, fposition_id, price_unit, currency_id, company_id=company_id, context=context)
-        rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), context=context)
-        if rec and rec.analytics_id:
+        rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=company_id, context=context)
+        if rec.analytics_id:
             res_prod['value'].update({'analytics_id': rec.analytics_id.id})
         return res_prod
 
@@ -438,18 +438,28 @@ class sale_order_line(osv.osv):
     def invoice_line_create(self, cr, uid, ids, context=None):
         create_ids = super(sale_order_line,self).invoice_line_create(cr, uid, ids, context=context)
         inv_line_obj = self.pool.get('account.invoice.line')
-        acct_anal_def_obj = self.pool.get('account.analytic.default')
         if ids:
             sale_line = self.browse(cr, uid, ids[0], context=context)
             for line in inv_line_obj.browse(cr, uid, create_ids, context=context):
-                rec = acct_anal_def_obj.account_get(cr, uid, line.product_id.id,
-                        sale_line.order_id.partner_id.id, uid, time.strftime('%Y-%m-%d'),
-                        sale_line.order_id.company_id.id, context=context)
-
+                rec = sale_line.analytics_default()
                 if rec:
                     inv_line_obj.write(cr, uid, [line.id], {'analytics_id': rec.analytics_id.id}, context=context)
         return create_ids
 
+
+class stock_move(osv.Model):
+    _inherit = 'stock.move'
+
+    def _create_invoice_line_from_vals(self, cr, uid, move, invoice_line_vals, context=None):
+        """ set the default analytics distribution on the invoice line """
+        partner_id = self.pool['account.invoice'].browse(cr, uid, invoice_line_vals.get('invoice_id'), context=context).partner_id.id
+        if not invoice_line_vals.get('analytics_id'):
+            rec = self.pool['account.analytic.default'].account_get(
+                cr, uid, move.product_id.id, partner_id, uid, time.strftime('%Y-%m-%d'),
+                company_id=move.company_id.id, context=context)
+            if rec:
+                invoice_line_vals.update({'analytics_id': rec.analytics_id.id})
+        return super(stock_move, self)._create_invoice_line_from_vals(cr, uid, move, invoice_line_vals, context=context)
 
 
 class account_bank_statement(osv.osv):
