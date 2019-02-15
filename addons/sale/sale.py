@@ -805,8 +805,7 @@ class sale_order(osv.osv):
                     prod = product_obj.browse(cr, uid, line[2]['product_id'], context=context)
                 elif line[1]:
                     prod =  line_obj.browse(cr, uid, line[1], context=context).product_id
-                if prod and prod.taxes_id:
-                    line[2]['tax_id'] = [[6, 0, fiscal_obj.map_tax(cr, uid, fpos, prod.taxes_id, context=context)]]
+                self._onchange_fpos_line_update(line, prod, fpos)
                 order_line.append(line)
 
             # link      (4, ID)
@@ -815,13 +814,19 @@ class sale_order(osv.osv):
                 line_ids = line[0] == 4 and [line[1]] or line[2]
                 for line_id in line_ids:
                     prod = line_obj.browse(cr, uid, line_id, context=context).product_id
-                    if prod and prod.taxes_id:
-                        order_line.append([1, line_id, {'tax_id': [[6, 0, fiscal_obj.map_tax(cr, uid, fpos, prod.taxes_id, context=context)]]}])
-                    else:
-                        order_line.append([4, line_id])
+                    order_line.append(self._onchange_fpos_line_link(line_id, prod, fpos))
             else:
                 order_line.append(line)
         return {'value': {'order_line': order_line, 'amount_untaxed': False, 'amount_tax': False, 'amount_total': False}}
+
+    def _onchange_fpos_line_update(self, line, prod, fpos):
+        if prod and prod.taxes_id:
+            line[2]['tax_id'] = [[6, 0, fpos.map_tax(prod.taxes_id).ids]]
+
+    def _onchange_fpos_line_link(self, line_id, prod, fpos):
+        if prod and prod.taxes_id:
+            return [1, line_id, {'tax_id': [[6, 0, fpos.map_tax(prod.taxes_id).ids]]}]
+        return [4, line_id]
 
     def test_procurements_done(self, cr, uid, ids, context=None):
         for sale in self.browse(cr, uid, ids, context=context):
