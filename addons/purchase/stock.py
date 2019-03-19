@@ -89,8 +89,8 @@ class stock_move(osv.osv):
             purchase_line_obj = self.pool.get('purchase.order.line')
             purchase_obj = self.pool.get('purchase.order')
             invoice_line_obj = self.pool.get('account.invoice.line')
-            purchase_id = move.purchase_line_id.order_id.id
-            purchase_line_ids = purchase_line_obj.search(cr, uid, [('order_id', '=', purchase_id), ('invoice_lines', '=', False), '|', ('product_id', '=', False), ('product_id.type', '=', 'service')], context=context)
+            purchase_line_ids = move.purchase_line_id.order_id.order_line.filtered(
+                lambda x: not x.invoice_lines and (not x.product_id or x.product_id.type == 'service')).ids
             if purchase_line_ids:
                 inv_lines = []
                 for po_line in purchase_line_obj.browse(cr, uid, purchase_line_ids, context=context):
