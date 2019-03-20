@@ -403,13 +403,16 @@ class stock_move(osv.osv):
             })
             sale_line_obj = self.pool.get('sale.order.line')
             invoice_line_obj = self.pool.get('account.invoice.line')
-            sale_line_ids = move.procurement_id.sale_line_id.order_id.order_line.filtered(
-                lambda x: not x.invoiced and (not x.product_id or x.product_id.type == 'service')).ids
+            sale_line_ids = move._get_sale_line_ids_for_services_and_no_product()
             if sale_line_ids:
                 created_lines = sale_line_obj.invoice_line_create(cr, uid, sale_line_ids, context=context)
                 invoice_line_obj.write(cr, uid, created_lines, {'invoice_id': invoice_line_vals['invoice_id']}, context=context)
 
         return invoice_line_id
+
+    def _get_sale_line_ids_for_services_and_no_product(self):
+        return self.procurement_id.sale_line_id.order_id.order_line.filtered(
+            lambda x: not x.invoiced and (not x.product_id or x.product_id.type == 'service')).ids
 
     def _get_master_data(self, cr, uid, move, company, context=None):
         if context.get('inv_type') in ('out_invoice', 'out_refund') and move.procurement_id and move.procurement_id.sale_line_id and move.procurement_id.sale_line_id.order_id.order_policy == 'picking':

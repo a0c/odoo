@@ -89,8 +89,7 @@ class stock_move(osv.osv):
             purchase_line_obj = self.pool.get('purchase.order.line')
             purchase_obj = self.pool.get('purchase.order')
             invoice_line_obj = self.pool.get('account.invoice.line')
-            purchase_line_ids = move.purchase_line_id.order_id.order_line.filtered(
-                lambda x: not x.invoice_lines and (not x.product_id or x.product_id.type == 'service')).ids
+            purchase_line_ids = move._get_purchase_line_ids_for_services_and_no_product()
             if purchase_line_ids:
                 inv_lines = []
                 for po_line in purchase_line_obj.browse(cr, uid, purchase_line_ids, context=context):
@@ -101,6 +100,10 @@ class stock_move(osv.osv):
                     po_line.write({'invoice_lines': [(4, inv_line_id)]})
                 invoice_line_obj.write(cr, uid, inv_lines, {'invoice_id': invoice_line_vals['invoice_id']}, context=context)
         return invoice_line_id
+
+    def _get_purchase_line_ids_for_services_and_no_product(self):
+        return self.purchase_line_id.order_id.order_line.filtered(
+            lambda x: not x.invoice_lines and (not x.product_id or x.product_id.type == 'service')).ids
 
     def _get_master_data(self, cr, uid, move, company, context=None):
         if context.get('inv_type') == 'in_invoice' and move.purchase_line_id:
