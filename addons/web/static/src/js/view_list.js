@@ -1092,6 +1092,7 @@ instance.web.ListView.List = instance.web.Class.extend( /** @lends instance.web.
                 // name to be a string
                 $(self).trigger('action', [field.toString(), record_id, function (id) {
                     $target.removeAttr('disabled');
+                    focus_search_input();
                     return self.reload_record(self.records.get(id));
                 }]);
             })
