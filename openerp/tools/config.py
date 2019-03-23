@@ -343,6 +343,9 @@ class configmanager(object):
             group.add_option("--programname", dest="programname", my_default=release.product_name,
                              help="Log prefix used by syslog for sending logs to different files (default Odoo).",
                              type="string")
+            group.add_option("--pdf-print-dir", dest="pdf_print_dir", my_default=os.path.expanduser('~/PDF'),
+                             help="Directory where CUPS-PDF prints its files into.",
+                             type="string")
             parser.add_option_group(group)
 
         # Copy all optparse options (i.e. MyOption) into self.options.
