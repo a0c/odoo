@@ -28,6 +28,7 @@ from operator import attrgetter
 from types import NoneType
 import logging
 import pytz
+import sys
 import xmlrpclib
 
 from openerp.sql_db import LazyCursor
@@ -897,6 +898,26 @@ class Field(object):
                         self._compute_value(record)
                     except Exception as exc:
                         record._cache[self.name] = FailedValue(exc)
+            except:
+                # some record is failing, retry record by record to find which one
+                # and append failing record details to error message so users can fix
+                t, v, tb = sys.exc_info()
+                if hasattr(records, 'raise_details'):
+                    record_failing = False
+                    for record in records:
+                        try:
+                            self._compute_value(record)
+                        except:
+                            record_failing = record
+                            break
+                    if record_failing:
+                        details = record_failing.raise_details()
+                        if not v.message.endswith(details):  # if computed field calls computed field: only log the earliest error
+                            # append raise details
+                            msg = '%s\n\n%s' % (v.message, details)
+                            v.args = tuple((msg if x == v.message else x) for x in v.args)
+                            v.message = msg  # NB! update last, cos v.message is compared above
+                raise t, v, tb
 
     def determine_value(self, record):
         """ Determine the value of ``self`` for ``record``. """
