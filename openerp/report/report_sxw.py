@@ -198,7 +198,7 @@ class rml_parse(object):
                     d = DEFAULT_DIGITS
         return d
 
-    def formatLang(self, value, digits=None, date=False, date_time=False, grouping=True, monetary=False, dp=False, currency_obj=False):
+    def formatLang(self, value, digits=None, date=False, date_time=False, grouping=True, monetary=False, dp=False, currency_obj=False, date_format=False):
         """
             Assuming 'Account' decimal.precision=3:
                 formatLang(value) -> digits=2 (default)
@@ -223,11 +223,13 @@ class rml_parse(object):
             if not value:
                 return ''
 
-            date_format = self.lang_dict['date_format']
+            if not date_format:
+                date_format = self.lang_dict['date_format']
+                if date_time:
+                    date_format = date_format + " " + self.lang_dict['time_format']
             parse_format = DEFAULT_SERVER_DATE_FORMAT
             if date_time:
                 value = value.split('.')[0]
-                date_format = date_format + " " + self.lang_dict['time_format']
                 parse_format = DEFAULT_SERVER_DATETIME_FORMAT
             if isinstance(value, basestring):
                 # FIXME: the trimming is probably unreliable if format includes day/month names
