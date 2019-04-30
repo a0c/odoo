@@ -398,9 +398,10 @@ class stock_move(osv.osv):
             self.pool.get('sale.order.line').write(cr, uid, [sale_line.id], {
                 'invoice_lines': [(4, invoice_line_id)]
             }, context=context)
-            self.pool.get('sale.order').write(cr, uid, [sale_line.order_id.id], {
-                'invoice_ids': [(4, invoice_line_vals['invoice_id'])],
-            })
+            if invoice_line_vals['invoice_id'] not in sale_line.order_id.invoice_ids.ids:
+                self.pool.get('sale.order').write(cr, uid, [sale_line.order_id.id], {
+                    'invoice_ids': [(4, invoice_line_vals['invoice_id'])],
+                })
             sale_line_obj = self.pool.get('sale.order.line')
             invoice_line_obj = self.pool.get('account.invoice.line')
             sale_line_ids = move._get_sale_line_ids_for_services_and_no_product()
