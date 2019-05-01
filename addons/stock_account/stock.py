@@ -305,6 +305,13 @@ class stock_picking(osv.osv):
             'journal_id': journal_id,
         }
 
+    def _invoice_create_optional_lines(self, cr, uid, moves, inv_type, invoice_ids, context=None):
+        """ add optional lines to created invoices right before computing taxes (expensive operation).
+            with this method, lines are added faster due to not having to recompute taxes after
+            adding optional lines with standard override where taxes would have to be computed
+            twice - in super() and in override. this method is meant to be overridden. """
+        pass
+
     def _invoice_create_line(self, cr, uid, moves, journal_id, inv_type='out_invoice', context=None):
         invoice_obj = self.pool.get('account.invoice')
         move_obj = self.pool.get('stock.move')
@@ -353,6 +360,8 @@ class stock_picking(osv.osv):
 
             move_obj._create_invoice_line_from_vals(cr, uid, move, invoice_line_vals, context=context)
         move_obj.write(cr, uid, [m.id for m in moves], {'invoice_state': 'invoiced'}, context=context)
+
+        self._invoice_create_optional_lines(cr, uid, moves, inv_type, invoices.values(), context=context)
 
         invoice_obj.button_compute(cr, uid, invoices.values(), context=context, set_total=(inv_type in ('in_invoice', 'in_refund')))
         return invoices.values()
