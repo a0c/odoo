@@ -1208,7 +1208,7 @@ class account_move_line(osv.osv):
             ids = [ids]
         if vals.get('account_tax_id', False):
             raise osv.except_osv(_('Unable to change tax!'), _('You cannot change the tax, you should remove and recreate lines.'))
-        if ('account_id' in vals) and not account_obj.read(cr, uid, vals['account_id'], ['active'])['active']:
+        if ('account_id' in vals) and not account_obj.read(cr, uid, vals['account_id'], ['active'])[0]['active']:
             raise osv.except_osv(_('Bad Account!'), _('You cannot use an inactive account.'))
 
         affects_move = any(f in vals for f in ('account_id', 'journal_id', 'period_id', 'move_id', 'debit', 'credit', 'date'))
