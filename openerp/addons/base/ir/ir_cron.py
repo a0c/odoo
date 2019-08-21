@@ -170,6 +170,10 @@ class ir_cron(osv.osv):
                     if not ok or job['doall']:
                         self._callback(job_cr, job['user_id'], job['model'], job['function'], job['args'], job['id'])
                     if numbercall:
+                        if not job['interval_type']:
+                            _logger.warn('Interval Unit not set on Cron Job #%s %s! Using Day as Interval Unit.'
+                                         % (job['id'], job['name']))
+                            job['interval_type'] = 'days'
                         nextcall += _intervalTypes[job['interval_type']](job['interval_number'])
                     ok = True
                 addsql = ''
