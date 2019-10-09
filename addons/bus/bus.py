@@ -52,12 +52,18 @@ class ImBus(osv.Model):
                 "message" : json_dump(message)
             }
             self.pool['bus.bus'].create(cr, openerp.SUPERUSER_ID, values)
-            cr.commit()
             if random.random() < 0.01:
                 self.gc(cr, uid)
         if channels:
-            with openerp.sql_db.db_connect('postgres').cursor() as cr2:
-                cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
+            # We have to wait until the notifications are commited in database.
+            # When calling `NOTIFY imbus`, some concurrent threads will be
+            # awakened and will fetch the notification in the bus table. If the
+            # transaction is not commited yet, there will be nothing to fetch,
+            # and the longpolling will return no notification.
+            def notify():
+                with openerp.sql_db.db_connect('postgres').cursor() as cr2:
+                    cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
+            cr.after('commit', notify)
 
     def sendone(self, cr, uid, channel, message):
         self.sendmany(cr, uid, [[channel, message]])
