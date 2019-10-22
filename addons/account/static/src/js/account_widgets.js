@@ -128,6 +128,8 @@ openerp.account = function (instance) {
             };
         },
     
+        lines_filter_hook: function(lines_filter) {
+        },
         start: function() {
             this._super();
             var self = this;
@@ -185,6 +187,7 @@ openerp.account = function (instance) {
                 })
             );
     
+            self.lines_filter_hook(lines_filter);
             // Get statement lines
             deferred_promises.push(self.model_bank_statement_line
                 .query(['id'])
