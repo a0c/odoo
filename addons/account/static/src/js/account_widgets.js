@@ -21,6 +21,7 @@ openerp.account = function (instance) {
             this._super(parent);
             // Number of reconciliations loaded initially and by clicking 'show more'
             this.num_reconciliations_fetched_in_batch = 10;
+            this.context = context.context;
             if (context.context.statement_id) this.statement_ids = [context.context.statement_id];
             if (context.context.statement_ids) this.statement_ids = context.context.statement_ids;
             this.single_statement = this.statement_ids !== undefined && this.statement_ids.length === 1;
@@ -154,7 +155,7 @@ openerp.account = function (instance) {
                 }
                 // Anyway, find out how many statement lines are reconciled (for the progressbar)
                 deferred_promises.push(self.model_bank_statement
-                    .call("number_of_lines_reconciled", [self.statement_ids])
+                    .call("number_of_lines_reconciled", [self.statement_ids], {context: self.context})
                     .then(function(num) {
                         self.already_reconciled_lines = num;
                     })
