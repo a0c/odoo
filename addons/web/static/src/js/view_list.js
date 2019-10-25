@@ -113,6 +113,7 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
 
         this.records = new Collection();
 
+        this.active_domain_always = options.action && options.action.context.active_domain_always;
         this.set_groups(new (this.options.GroupsType)(this));
 
         if (this.dataset instanceof instance.web.DataSetStatic) {
@@ -879,7 +880,7 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
      */
     get_active_domain: function () {
         var self = this;
-        if (this.$('.oe_list_record_selector').prop('checked')) {
+        if (this.$('.oe_list_record_selector').prop('checked') || this.active_domain_always) {
             var search_view = this.getParent().searchview;
             var search_data = search_view.build_search_data();
             return instance.web.pyeval.eval_domains_and_contexts({
