@@ -364,7 +364,7 @@ class res_users(osv.osv):
             for id in ids:
                 if id in self.__uid_cache[db]:
                     del self.__uid_cache[db][id]
-        self._context_get.clear_cache(self)
+        self.context_get.clear_cache(self)
         self.has_group.clear_cache(self)
         return res
 
@@ -399,9 +399,11 @@ class res_users(osv.osv):
             default['login'] = _("%s (copy)") % user2copy['login']
         return super(res_users, self).copy(cr, uid, id, default, context)
 
-    @tools.ormcache(skiparg=2)
-    def _context_get(self, cr, uid):
-        user = self.browse(cr, SUPERUSER_ID, uid)
+    @tools.ormcache_context(skiparg=2)
+    def context_get(self, cr, uid, context=None):
+        user_company = self.read(cr, SUPERUSER_ID, uid, ['company_id'], load='_classic_write')['company_id']
+        context = dict(context if context is not None else {}, force_company=user_company)
+        user = self.browse(cr, SUPERUSER_ID, uid, context)
         result = {}
         for k in self._fields:
             if k.startswith('context_'):
@@ -416,9 +418,6 @@ class res_users(osv.osv):
                     res = res.id
                 result[context_key] = res or False
         return result
-
-    def context_get(self, cr, uid, context=None):
-        return self._context_get(cr, uid)
 
     def action_get(self, cr, uid, context=None):
         dataobj = self.pool['ir.model.data']
