@@ -276,22 +276,17 @@ class stock_warehouse(osv.osv):
         return res
 
     def write(self, cr, uid, ids, vals, context=None):
-        pull_obj = self.pool.get('procurement.rule')
-        if isinstance(ids, (int, long)):
-            ids = [ids]
-
+        res = super(stock_warehouse, self).write(cr, uid, ids, vals, context=None)
         if 'buy_to_resupply' in vals:
-            if vals.get("buy_to_resupply"):
-                for warehouse in self.browse(cr, uid, ids, context=context):
-                    if not warehouse.buy_pull_id:
-                        buy_pull_vals = self._get_buy_pull_rule(cr, uid, warehouse, context=context)
-                        buy_pull_id = pull_obj.create(cr, uid, buy_pull_vals, context=context)
-                        vals['buy_pull_id'] = buy_pull_id
-            else:
-                for warehouse in self.browse(cr, uid, ids, context=context):
-                    if warehouse.buy_pull_id:
-                        buy_pull_id = pull_obj.unlink(cr, uid, warehouse.buy_pull_id.id, context=context)
-        return super(stock_warehouse, self).write(cr, uid, ids, vals, context=None)
+            # (re-)create buy_pull_id only after change_route() in super().write() has updated all the locations.
+            # otherwise we cannot use _create_reactivate_rule() to find & use existing inactive rule. previously
+            # buy rule was created here with potentially incorrect location and then updated in change_route() below.
+            # but this makes impossible current approach to find & use existing rule as we'd be searching for rule with
+            # wrong location in it, so a new obsolete rule could be created here because _get_buy_pull_rule() uses
+            # warehouse.in_type_id.default_location_dest_id only updated in change_route() in super().write().
+            warehouses = self.browse(cr, uid, ids, context=context)
+            warehouses.create_buy_pull_rule(vals['buy_to_resupply'])
+        return res
 
     def get_all_routes_for_wh(self, cr, uid, warehouse, context=None):
         all_routes = super(stock_warehouse, self).get_all_routes_for_wh(cr, uid, warehouse, context=context)
@@ -311,10 +306,15 @@ class stock_warehouse(osv.osv):
 
     def _handle_renaming(self, cr, uid, warehouse, name, code, context=None):
         res = super(stock_warehouse, self)._handle_renaming(cr, uid, warehouse, name, code, context=context)
-        pull_obj = self.pool.get('procurement.rule')
+        pull_obj = warehouse.env['procurement.rule']
         #change the buy pull rule name
-        if warehouse.buy_pull_id:
-            pull_obj.write(cr, uid, warehouse.buy_pull_id.id, {'name': warehouse.buy_pull_id.name.replace(warehouse.name, name, 1)}, context=context)
+        buy_rule = warehouse.buy_pull_id
+        if not buy_rule:
+            # buy_rule could've been deactivated & disconnected => find it and rename
+            rule_vals = warehouse._get_buy_pull_rule(warehouse)
+            buy_rule = self._find_existing_rule(rule_vals, pull_obj)
+        if buy_rule:
+            buy_rule.write({'name': buy_rule.name.replace(warehouse.name, name, 1)})
         return res
 
     def change_route(self, cr, uid, ids, warehouse, new_reception_step=False, new_delivery_step=False, context=None):
@@ -322,3 +322,22 @@ class stock_warehouse(osv.osv):
         if warehouse.in_type_id.default_location_dest_id != warehouse.buy_pull_id.location_id:
             self.pool.get('procurement.rule').write(cr, uid, warehouse.buy_pull_id.id, {'location_id': warehouse.in_type_id.default_location_dest_id.id}, context=context)
         return res
+
+    def create_buy_pull_rule(self, buy_to_resupply):
+        """ (re-)create buy_pull_id only after change_route() in super().write() has updated all the locations
+            otherwise we cannot use _create_reactivate_rule() to find & use existing inactive rule """
+        pull_obj = self.env['procurement.rule']
+        if buy_to_resupply:
+            for warehouse in self:
+                if not warehouse.buy_pull_id:
+                    buy_pull_vals = self._get_buy_pull_rule(warehouse)
+                    buy_pull = self._create_reactivate_rule(buy_pull_vals, pull_obj)
+                    warehouse.buy_pull_id = buy_pull
+        else:
+            for warehouse in self:
+                if warehouse.buy_pull_id:
+                    # don't delete rule, but 1) deactivate it to find & reuse when buy_to_resupply re-enabled again, and
+                    # 2) disconnect it to avoid updating inactive rule in change_route(), and to reconnect it above when
+                    # asked, and to avoid its possible usages in flows
+                    warehouse.buy_pull_id.active = False
+                    warehouse.buy_pull_id = False

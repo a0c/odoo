@@ -3166,15 +3166,14 @@ class stock_warehouse(osv.osv):
         #create route selectable on the product to resupply the warehouse from another one
         external_transit_location = self._get_external_transit_location(cr, uid, warehouse, context=context)
         internal_transit_location = warehouse.company_id.internal_transit_location_id
-        input_loc = warehouse.wh_input_stock_loc_id
-        if warehouse.reception_steps == 'one_step':
-            input_loc = warehouse.lot_stock_id
+        # DRY: in_type_id is already configured for reception_steps + support possible transit steps
+        input_loc = warehouse.in_type_id.default_location_dest_id
         for wh in supplier_warehouses:
             transit_location = wh.company_id.id == warehouse.company_id.id and internal_transit_location or external_transit_location
             if transit_location:
-                output_loc = wh.wh_output_stock_loc_id
+                # DRY: out_type_id is already configured for delivery_steps + support possible transit steps
+                output_loc = wh.out_type_id.default_location_src_id
                 if wh.delivery_steps == 'ship_only':
-                    output_loc = wh.lot_stock_id
                     # Create extra MTO rule (only for 'ship only' because in the other cases MTO rules already exists)
                     mto_pull_vals = self._get_mto_pull_rule(cr, uid, wh, [(output_loc, transit_location, wh.out_type_id.id)], context=context)[0]
                     pull_obj.create(cr, uid, mto_pull_vals, context=context)
@@ -3427,28 +3426,23 @@ class stock_warehouse(osv.osv):
         picking_type_obj.write(cr, uid, warehouse.pack_type_id.id, {'active': new_delivery_step == 'pick_pack_ship'}, context=context)
 
         routes_dict = self.get_routes_dict(cr, uid, ids, warehouse, context=context)
-        #update delivery route and rules: unlink the existing rules of the warehouse delivery route and recreate it
-        pull_obj.unlink(cr, uid, [pu.id for pu in warehouse.delivery_route_id.pull_ids], context=context)
+        #update delivery route and rules: deactivate existing rules of the warehouse delivery route and reactivate/create if needed
+        pull_obj.write(cr, uid, [pu.id for pu in warehouse.delivery_route_id.pull_ids], {'active': False}, context=context)
         route_name, values = routes_dict[new_delivery_step]
         route_obj.write(cr, uid, warehouse.delivery_route_id.id, {'name': self._format_routename(cr, uid, warehouse, route_name, context=context)}, context=context)
         dummy, pull_rules_list = self._get_push_pull_rules(cr, uid, warehouse, True, values, warehouse.delivery_route_id.id, context=context)
-        #create the pull rules
-        for pull_rule in pull_rules_list:
-            pull_obj.create(cr, uid, vals=pull_rule, context=context)
+        #create/reactivate the pull rules
+        warehouse._create_reactivate_rules(pull_rules_list, pull_obj)
 
-        #update receipt route and rules: unlink the existing rules of the warehouse receipt route and recreate it
-        pull_obj.unlink(cr, uid, [pu.id for pu in warehouse.reception_route_id.pull_ids], context=context)
-        push_obj.unlink(cr, uid, [pu.id for pu in warehouse.reception_route_id.push_ids], context=context)
+        #update receipt route and rules: deactivate existing rules of the warehouse receipt route and reactivate/create
+        pull_obj.write(cr, uid, [pu.id for pu in warehouse.reception_route_id.pull_ids], {'active': False}, context=context)
+        push_obj.write(cr, uid, [pu.id for pu in warehouse.reception_route_id.push_ids], {'active': False}, context=context)
         route_name, values = routes_dict[new_reception_step]
         route_obj.write(cr, uid, warehouse.reception_route_id.id, {'name': self._format_routename(cr, uid, warehouse, route_name, context=context)}, context=context)
         push_rules_list, pull_rules_list = self._get_push_pull_rules(cr, uid, warehouse, True, values, warehouse.reception_route_id.id, context=context)
-        #create the push/pull rules
-        for push_rule in push_rules_list:
-            push_obj.create(cr, uid, vals=push_rule, context=context)
-        for pull_rule in pull_rules_list:
-            #all pull rules in receipt route are mto, because we don't want to wait for the scheduler to trigger an orderpoint on input location
-            pull_rule['procure_method'] = 'make_to_order'
-            pull_obj.create(cr, uid, vals=pull_rule, context=context)
+        #create/reactivate the push/pull rules
+        warehouse._create_reactivate_rules(push_rules_list, push_obj)
+        warehouse._create_reactivate_rules(pull_rules_list, pull_obj, {'procure_method': 'make_to_order'})  #all pull rules in receipt route are mto, because we don't want to wait for the scheduler to trigger an orderpoint on input location
 
         route_obj.write(cr, uid, warehouse.crossdock_route_id.id, {'active': new_reception_step != 'one_step' and new_delivery_step != 'ship_only'}, context=context)
 
@@ -3457,6 +3451,29 @@ class stock_warehouse(osv.osv):
         mto_pull_vals = self._get_mto_pull_rule(cr, uid, warehouse, values, context=context)[0]
         pull_obj.write(cr, uid, warehouse.mto_pull_id.id, mto_pull_vals, context=context)
         return True
+
+    def _create_reactivate_rules(self, rules_list, rule_obj, rule_vals=None):
+        rule_obj = self.env[rule_obj._name]
+        for rule in rules_list:
+            self._create_reactivate_rule(rule, rule_obj, rule_vals)
+
+    def _create_reactivate_rule(self, rule, rule_obj, rule_vals=None):
+        """ create or update existing rule (set active/inactive)
+            https://github.com/odoo/odoo/blob/13.0/addons/purchase_stock/models/stock.py#L114 """
+        if rule_vals: rule.update(rule_vals.items())  # update vals before search to find pull rules of receipt route
+        existing_rule = self._find_existing_rule(rule, rule_obj)
+        if not existing_rule:
+            return rule_obj.create(rule)
+        else:
+            existing_rule.write({'active': True})
+            return existing_rule
+
+    def _find_existing_rule(self, rule, rule_obj):
+        args_existing = [(field, '=', rule[field]) for field in rule.keys() if field not in ('name', 'active')]
+        if not args_existing:
+            raise Warning(_('Internal Error: no fields by which to search existing rules!'))
+        return rule_obj.search(args_existing + [('active', '=', False)], limit=1) or \
+               rule_obj.search(args_existing + [('active', '=', True)], limit=1)
 
     def create_sequences_and_picking_types(self, cr, uid, warehouse, context=None):
         seq_obj = self.pool.get('ir.sequence')
@@ -3679,7 +3696,7 @@ class stock_warehouse(osv.osv):
             # We need to delete all the MTO pull rules, otherwise they risk to be used in the system
             pulls = pull_obj.search(cr, uid, ['&', ('route_id', '=', mto_route_id), ('location_id.usage', '=', 'transit'), ('location_src_id', '=', warehouse.lot_stock_id.id)], context=context)
             if pulls:
-                pull_obj.unlink(cr, uid, pulls, context=context)
+                pull_obj.write(cr, uid, pulls, {'active': False}, context=context)
 
     def _check_reception_resupply(self, cr, uid, warehouse, new_location, context=None):
         """
@@ -3758,7 +3775,9 @@ class stock_warehouse(osv.osv):
                     if to_remove_wh_ids:
                         to_remove_route_ids = route_obj.search(cr, uid, [('supplied_wh_id', '=', warehouse.id), ('supplier_wh_id', 'in', list(to_remove_wh_ids))], context=context)
                         if to_remove_route_ids:
-                            route_obj.unlink(cr, uid, to_remove_route_ids, context=context)
+                            # in all overrides of write() method: disable instead of unlink()
+                            #   https://github.com/odoo/odoo/commit/a5b9d05b6691ff292ef5013518188791b5fd4623
+                            route_obj.write(cr, uid, to_remove_route_ids, {'active': False}, context=context)
                 else:
                     #not implemented
                     pass
