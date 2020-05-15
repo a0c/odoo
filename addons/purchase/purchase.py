@@ -754,16 +754,7 @@ class purchase_order(osv.osv):
     def _prepare_order_line_move(self, cr, uid, order, order_line, picking_id, group_id, context=None):
         ''' prepare the stock move data from the PO line. This function returns a list of dictionary ready to be used in stock.move's create()'''
         product_uom = self.pool.get('product.uom')
-        price_unit = order_line.price_unit
-        if order_line.taxes_id:
-            taxes = self.pool['account.tax'].compute_all(cr, uid, order_line.taxes_id, price_unit, 1.0,
-                                                             order_line.product_id, order.partner_id)
-            price_unit = taxes['total']
-        if order_line.product_uom.id != order_line.product_id.uom_id.id:
-            price_unit *= order_line.product_uom.factor / order_line.product_id.uom_id.factor
-        if order.currency_id.id != order.company_id.currency_id.id:
-            #we don't round the price_unit, as we may want to store the standard price with more digits than allowed by the currency
-            price_unit = self.pool.get('res.currency').compute(cr, uid, order.currency_id.id, order.company_id.currency_id.id, price_unit, round=False, context=context)
+        price_unit = order._prepare_order_line_move_price_unit(order_line)
         res = []
         if order.location_id.usage == 'customer':
             name = order_line.product_id.with_context(dict(context or {}, lang=order.dest_address_id.lang)).name
@@ -816,6 +807,19 @@ class purchase_order(osv.osv):
             move_template['product_uos_qty'] = diff_quantity
             res.append(move_template)
         return res
+
+    def _prepare_order_line_move_price_unit(self, order_line):
+        price_unit = order_line.price_unit
+        order = self
+        if order_line.taxes_id:
+            taxes = order_line.taxes_id.compute_all(price_unit, 1.0, order_line.product_id, order.partner_id)
+            price_unit = taxes['total']
+        if order_line.product_uom.id != order_line.product_id.uom_id.id:
+            price_unit *= order_line.product_uom.factor / order_line.product_id.uom_id.factor
+        if order.currency_id.id != order.company_id.currency_id.id:
+            #we don't round the price_unit, as we may want to store the standard price with more digits than allowed by the currency
+            price_unit = order.currency_id.compute(price_unit, order.company_id.currency_id, round=False)
+        return price_unit
 
     def _create_stock_moves(self, cr, uid, order, order_lines, picking_id=False, context=None):
         """Creates appropriate stock moves for given order lines, whose can optionally create a

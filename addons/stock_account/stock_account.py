@@ -131,7 +131,8 @@ class stock_quant(osv.osv):
 
         #in case of routes making the link between several warehouse of the same company, the transit location belongs to this company, so we don't need to create accounting entries
         # Create Journal Entry for products arriving in the company
-        if company_to and (move.location_id.usage not in ('internal', 'transit') and move.location_dest_id.usage == 'internal' or company_from != company_to):
+        if company_to and (move.location_id.usage not in ('internal', 'transit') and move.location_dest_id.usage == 'internal'
+                           or company_from != company_to or self._account_entry_move_needed(True, move)):
             ctx = context.copy()
             ctx['force_company'] = company_to.id
             journal_id, acc_src, acc_dest, acc_valuation = self._get_accounting_data_for_valuation(cr, uid, move, context=ctx)
@@ -142,7 +143,8 @@ class stock_quant(osv.osv):
                 self._create_account_move_line(cr, uid, quants, move, acc_src, acc_valuation, journal_id, context=ctx)
 
         # Create Journal Entry for products leaving the company
-        if company_from and (move.location_id.usage == 'internal' and move.location_dest_id.usage not in ('internal', 'transit') or company_from != company_to):
+        if company_from and (move.location_id.usage == 'internal' and move.location_dest_id.usage not in ('internal', 'transit')
+                             or company_from != company_to or self._account_entry_move_needed(False, move)):
             ctx = context.copy()
             ctx['force_company'] = company_from.id
             journal_id, acc_src, acc_dest, acc_valuation = self._get_accounting_data_for_valuation(cr, uid, move, context=ctx)
@@ -267,15 +269,24 @@ class stock_quant(osv.osv):
                 quant_cost_qty[quant.cost] += quant.qty
             else:
                 quant_cost_qty[quant.cost] = quant.qty
-        move_obj = self.pool.get('account.move')
         for cost, qty in quant_cost_qty.items():
             move_lines = self._prepare_account_move_line(cr, uid, move, qty, cost, credit_account_id, debit_account_id, context=context)
             period_id = context.get('force_period', self.pool.get('account.period').find(cr, uid, context=context)[0])
-            move_obj.create(cr, uid, {'journal_id': journal_id,
+            self._create_account_move_from_vals(cr, uid, {'journal_id': journal_id,
                                       'line_id': move_lines,
                                       'period_id': period_id,
                                       'date': fields.date.context_today(self, cr, uid, context=context),
                                       'ref': move.picking_id.name}, context=context)
+
+    @api.model
+    def _create_account_move_from_vals(self, vals):
+        self.env['account.move'].create(vals)
+
+    def _account_entry_move_needed(self, is_in, move):
+        """ to be overridden if accounting entry move must be created for the given move for some extra reason.
+            move is assumed to be within the same company (company_to == company_from and company_to != False)
+            so company can be accessed directly from move.location_id.company_id."""
+        return False
 
     #def _reconcile_single_negative_quant(self, cr, uid, to_solve_quant, quant, quant_neg, qty, context=None):
     #    move = self._get_latest_move(cr, uid, to_solve_quant, context=context)

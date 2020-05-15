@@ -2040,6 +2040,11 @@ class BaseModel(object):
         del data['id']
         return data
 
+    @api.model
+    def _read_group_filter_hook(self, result):
+        """ can be overridden to e.g. drop groups with total sum of some value equal to 0, for instance """
+        return result
+
     def read_group(self, cr, uid, domain, fields, groupby, offset=0, limit=None, context=None, orderby=False, lazy=True):
         """
         Get the list of records in list view grouped by the given ``groupby`` fields
@@ -2165,6 +2170,7 @@ class BaseModel(object):
             result = self._read_group_fill_results(cr, uid, domain, groupby_fields[0], groupby[len(annotated_groupbys):],
                                                        aggregated_fields, count_field, result, read_group_order=order,
                                                        context=context)
+        result = self._read_group_filter_hook(cr, uid, result, context=context)
         return result
 
     def _inherits_join_add(self, current_model, parent_model_name, query):
