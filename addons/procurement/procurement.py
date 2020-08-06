@@ -195,6 +195,7 @@ class procurement_order(osv.osv):
         return self.write(cr, uid, ids, {'state': 'confirmed'}, context=context)
 
     def run(self, cr, uid, ids, autocommit=False, context=None):
+        states_to_write = {'running': [], 'exception': []}
         for procurement_id in ids:
             #we intentionnaly do the browse under the for loop to avoid caching all ids which would be resource greedy
             #and useless as we'll make a refresh later that will invalidate all the cache (and thus the next iteration
@@ -205,20 +206,26 @@ class procurement_order(osv.osv):
                     if self._assign(cr, uid, procurement, context=context):
                         res = self._run(cr, uid, procurement, context=context or {})
                         if res:
-                            self.write(cr, uid, [procurement.id], {'state': 'running'}, context=context)
+                            states_to_write['running'].append(procurement.id)
                         else:
-                            self.write(cr, uid, [procurement.id], {'state': 'exception'}, context=context)
+                            states_to_write['exception'].append(procurement.id)
                     else:
                         self.message_post(cr, uid, [procurement.id], body=_('No rule matching this procurement'), context=context)
-                        self.write(cr, uid, [procurement.id], {'state': 'exception'}, context=context)
+                        states_to_write['exception'].append(procurement.id)
                     if autocommit:
+                        for state, proc_ids in states_to_write.iteritems():
+                            self.write(cr, uid, proc_ids, {'state': state}, context=context)
+                        states_to_write = {'running': [], 'exception': []}
                         cr.commit()
                 except OperationalError:
                     if autocommit:
+                        states_to_write = {'running': [], 'exception': []}  # cleanup to continue with next proc
                         cr.rollback()
                         continue
                     else:
                         raise
+        for state, proc_ids in states_to_write.iteritems():
+            self.write(cr, uid, proc_ids, {'state': state}, context=context)
         return True
 
     def check(self, cr, uid, ids, autocommit=False, context=None):
