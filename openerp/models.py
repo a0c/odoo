@@ -4717,6 +4717,9 @@ class BaseModel(object):
             if key:
                 # use admin user for accessing objects having rules defined on store fields
                 result = self._columns[val[0]].get(cr, self, ids, val, SUPERUSER_ID, context=context)
+                queries = {}  # fast storing: merge recs into single SQL query:
+                # UPDATE "stock_move" SET "weight_net"=0.000,"weight"=0.000 WHERE id = 904
+                # UPDATE "stock_move" SET "weight_net"=0.000,"weight"=0.000 WHERE id = 905
                 for id, value in result.items():
                     if field_flag:
                         for f in value.keys():
@@ -4734,13 +4737,18 @@ class BaseModel(object):
                                 pass
                         updates.append((v, column._symbol_set[0], column._symbol_set[1](value[v])))
                     if updates:
-                        query = 'UPDATE "%s" SET %s WHERE id = %%s' % (
-                            self._table, ','.join('"%s"=%s' % u[:2] for u in updates),
-                        )
-                        params = tuple(u[2] for u in updates)
-                        cr.execute(query, params + (id,))
-
+                        updates.sort(key=lambda x: x[0])  # ensure same order for unique dict keys
+                        queries.setdefault(tuple(updates), []).append(id)
+                # run SQL
+                for updates, _ids in queries.iteritems():
+                    self._db_update_cols_on_ids(cr, updates, tuple(sorted(_ids)))
             else:
+                queries = {}  # fast storing: merge recs & vals into single SQL query:
+                # UPDATE "sale_order_line" SET "company_id"=1 WHERE id = 1040
+                # UPDATE "sale_order_line" SET "company_id"=1 WHERE id = 1041
+                #
+                # UPDATE "sale_order_line" SET "order_partner_id"=18 WHERE id = 1040
+                # UPDATE "sale_order_line" SET "order_partner_id"=18 WHERE id = 1041
                 for f in val:
                     column = self._columns[f]
                     # use admin user for accessing objects having rules defined on store fields
@@ -4756,15 +4764,32 @@ class BaseModel(object):
                                 value = value[0]
                             except:
                                 pass
-                        query = 'UPDATE "%s" SET "%s"=%s WHERE id = %%s' % (
-                            self._table, f, column._symbol_set[0],
-                        )
-                        cr.execute(query, (column._symbol_set[1](value), id))
+                        # list of (column, pattern, value)
+                        # NB: values must be passed separately to cr.execute() and NOT inlined into '"%s"=%s':
+                        # otherwise e.g. tuple ('password', '') would be inlined as '"password"=' (malformed SQL)
+                        updates = f, column._symbol_set[0], column._symbol_set[1](value)
+                        queries.setdefault(updates, []).append(id)
+                # merge columns with same set of IDs
+                same_ids = {}
+                for updates, _ids in queries.iteritems():
+                    same_ids.setdefault(tuple(sorted(_ids)), []).append(updates)
+                # run SQL
+                for _ids, updates in same_ids.iteritems():
+                    self._db_update_cols_on_ids(cr, updates, _ids)
 
         # invalidate and mark new-style fields to recompute
         self.browse(cr, uid, ids, context).modified(fields)
 
         return True
+
+    def _db_update_cols_on_ids(self, cr, updates, _ids):
+        assert isinstance(_ids, tuple)
+        set_cols = ('"%s"=%s' % upd[:2] for upd in updates)
+        set_vals = tuple(upd[2] for upd in updates)
+        query = 'UPDATE "%s" SET %s WHERE id in %%s' % (
+            self._table, ','.join(set_cols)
+        )
+        cr.execute(query, set_vals + (_ids,))
 
     # TODO: ameliorer avec NULL
     def _where_calc(self, cr, user, domain, active_test=True, context=None):
