@@ -4628,6 +4628,7 @@ class BaseModel(object):
         """
         if fields is None: fields = []
         stored_functions = self.pool._store_function.get(self._name, [])
+        stored_functions = self._store_get_values_filter_stored_functions(cr, uid, ids, fields, stored_functions, context)
 
         # use indexed names for the details of the stored_functions:
         model_name_, func_field_to_compute_, target_ids_func_, trigger_fields_, priority_ = range(5)
@@ -4676,6 +4677,10 @@ class BaseModel(object):
         if call_map:
             result = reduce(operator.add, (call_map[k] for k in sorted(call_map)))
         return result
+
+    def _store_get_values_filter_stored_functions(self, cr, uid, ids, fields, stored_functions, context):
+        """ hook for filtering stored_functions, e.g. for speedup """
+        return stored_functions
 
     def _store_set_values(self, cr, uid, ids, fields, context):
         """Calls the fields.function's "implementation function" for all ``fields``, on records with ``ids`` (taking care of
