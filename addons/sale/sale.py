@@ -737,6 +737,7 @@ class sale_order(osv.osv):
         sale_line_obj = self.pool.get('sale.order.line')
         for order in self.browse(cr, uid, ids, context=context):
             proc_ids = []
+            proc_vals = []
             vals = self._prepare_procurement_group(cr, uid, order, context=context)
             if not order.procurement_group_id:
                 group_id = self.pool.get("procurement.group").create(cr, uid, vals, context=context)
@@ -758,10 +759,11 @@ class sale_order(osv.osv):
                     if (line.state == 'done') or not line.product_id:
                         continue
                     vals = self._prepare_order_line_procurement(cr, uid, order, line, group_id=order.procurement_group_id.id, context=context)
-                    ctx = context.copy()
-                    ctx['procurement_autorun_defer'] = True
-                    proc_id = procurement_obj.create(cr, uid, vals, context=ctx)
-                    proc_ids.append(proc_id)
+                    proc_vals.append(vals)
+            if proc_vals:
+                ctx = context.copy()
+                ctx['procurement_autorun_defer'] = True  # todo: procurement_jit_stock: override create_bulk() to support procurement_autorun_defer like in create()
+                proc_ids.extend(procurement_obj.create_bulk(cr, uid, proc_vals, context=ctx))
             #Confirm procurement order such that rules will be applied on it
             #note that the workflow normally ensure proc_ids isn't an empty list
             procurement_obj.run(cr, uid, proc_ids, context=context)
@@ -1331,7 +1333,6 @@ class procurement_order(osv.osv):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = super(procurement_order, self).write(cr, uid, ids, vals, context=context)
-        from openerp import workflow
         if vals.get('state') in ['done', 'cancel', 'exception']:
             for proc in self.browse(cr, uid, ids, context=context):
                 if proc.sale_line_id and proc.sale_line_id.order_id:

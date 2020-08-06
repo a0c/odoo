@@ -4051,6 +4051,302 @@ class BaseModel(object):
         self.step_workflow(cr, user, ids, context=context)
         return True
 
+    @api.model
+    @api.returns('self', lambda value: list(value._ids))
+    def create_bulk(self, vals_bulk):
+        self.check_access_rights('create')
+
+        num_vals = len(vals_bulk)
+        if not num_vals:
+            return self.browse()
+
+        # add missing defaults, and drop fields that may not be set by user
+        allDefaults = self._add_missing_default_values({})
+        newValsBulk = []
+        for vals in vals_bulk:
+            newVals = allDefaults.copy()
+            newVals.update(vals)
+            for field in itertools.chain(MAGIC_COLUMNS, ('parent_left', 'parent_right')):
+                newVals.pop(field, None)
+            newValsBulk.append(newVals)
+        del vals_bulk
+        vals_bulk = newValsBulk
+
+        vals_0 = vals_bulk[0]
+        num_fields, keys = len(vals_0), vals_0.viewkeys()
+        if any(len(v) != num_fields for v in vals_bulk):
+            raise except_orm(_('ValidateError'), 'Different number of fields in vals of the bulk')
+        if any(v.viewkeys() != keys for v in vals_bulk):
+            raise except_orm(_('ValidateError'), 'Different fields in the bulk')
+
+        # split up fields into old-style and pure new-style ones
+        old_vals_bulk, new_vals_bulk, unknown = [], [], []
+        for idx in xrange(num_vals):
+            old_vals_bulk.append({})
+            new_vals_bulk.append({})
+        for key in keys:
+            field = self._fields.get(key)
+            if field:
+                if field.column or field.inherited:
+                    for idx, old_vals in enumerate(old_vals_bulk):
+                        old_vals[key] = vals_bulk[idx][key]
+                if field.inverse and not field.inherited:
+                    for idx, new_vals in enumerate(new_vals_bulk):
+                        new_vals[key] = vals_bulk[idx][key]
+            else:
+                unknown.append(key)
+
+        if unknown:
+            _logger.warning("%s.create_bulk() with unknown fields: %s", self._name, ', '.join(sorted(unknown)))
+
+        # create record with old-style fields
+        records = self.browse(self._create_bulk(old_vals_bulk))
+
+        # put the values of pure new-style fields into cache, and inverse them
+        if new_vals_bulk[0]:
+            # todo
+            raise except_orm('ImplementationError', 'Not implemented: debug normal create() method to get a clue on what should happen here')
+        # record._cache.update(record._convert_to_cache(new_vals))
+        # for key in new_vals:
+        #     self._fields[key].determine_inverse(record)
+
+        return records
+
+    def _create_bulk(self, vals_bulk):
+        # low-level implementation of create_bulk()
+        cr, user, context = self.env.args
+        if not context:
+            context = {}
+
+        if self.is_transient():
+            self._model._transient_vacuum(cr, user)
+
+        num_vals = len(vals_bulk)
+        if not num_vals:
+            return self.browse()
+
+        cr.execute("SELECT nextval('%s') FROM generate_series(1,%s)" % (self._sequence, num_vals))
+        ids_new = cr.fetchall()
+        ids_new = [t[0] for t in ids_new]
+
+        vals_0 = vals_bulk[0]
+        tocreate = {}
+        for v in self._inherits:
+            if self._inherits[v] not in vals_0:
+                tocreate[v] = [{} for i in ids_new]
+            else:
+                tocreate[v] = [{'id': vals[self._inherits[v]]} for vals in vals_bulk]
+
+        # list of column assignments defined as tuples like:
+        #   (column_name, format_string, column_value)
+        #   (column_name, sql_formula)
+        # Those tuples will be used by the string formatting for the INSERT
+        # statement below.
+        ids_gen = iter(ids_new)
+        updates = [[('id', str(ids_gen.next()))] for i in ids_new]
+
+        upd_todo = []
+        unknown_fields = []
+        for v in vals_0.keys():
+            if v in self._inherit_fields and v not in self._columns:
+                (table, col, col_detail, original_parent) = self._inherit_fields[v]
+                for idx, tocreate_vals in enumerate(tocreate[table]):
+                    tocreate_vals[v] = vals_bulk[idx][v]
+                    del vals_bulk[idx][v]
+            else:
+                if (v not in self._inherit_fields) and (v not in self._columns):
+                    for vals in vals_bulk:
+                        del vals[v]
+                    unknown_fields.append(v)
+        if unknown_fields:
+            _logger.warning('No such field(s) in model %s: %s.', self._name, ', '.join(unknown_fields))
+
+        for table in tocreate:
+            for vals in vals_bulk:
+                if self._inherits[table] in vals:
+                    del vals[self._inherits[table]]
+
+            record_id_bulk = [tocreate_vals.pop('id', None) for tocreate_vals in tocreate[table]]
+
+            tocreate_vals, tocreate_idxs = [], []
+            for idx, record_id in enumerate(record_id_bulk):
+                if record_id is None or not record_id:
+                    tocreate_idxs.append(idx)
+                    tocreate_vals.append(tocreate[table][idx])
+                else:
+                    self.pool[table].write(cr, user, [record_id], tocreate[table][idx], context=dict(context, recompute=True))
+                    updates[idx].append((self._inherits[table], '%s', record_id))
+
+            record_ids = self.pool[table].create_bulk(cr, user, tocreate_vals, context=dict(context, recompute=True))
+            assert len(record_ids) == len(tocreate_idxs), \
+                'Less parent records created than needed. Expected: %s. Actual: %s' % (len(tocreate_idxs), len(record_ids))
+
+            for i, record_id in enumerate(record_ids):
+                idx = tocreate_idxs[i]
+                updates[idx].append((self._inherits[table], '%s', record_id))
+            del tocreate_vals, tocreate_idxs, record_id_bulk, record_ids
+        del tocreate
+
+        #Start : Set bool fields to be False if they are not touched(to make search more powerful)
+        bool_fields = [x for x in self._columns.keys() if self._columns[x]._type=='boolean']
+
+        for bool_field in bool_fields:
+            if bool_field not in vals_0:
+                for vals in vals_bulk:
+                    vals[bool_field] = False
+        #End
+        # todo: todo
+        # for field in vals.keys():
+        #     fobj = None
+        #     if field in self._columns:
+        #         fobj = self._columns[field]
+        #     else:
+        #         fobj = self._inherit_fields[field][2]
+        #     if not fobj:
+        #         continue
+        #     groups = fobj.write
+        #     if groups:
+        #         edit = False
+        #         for group in groups:
+        #             module = group.split(".")[0]
+        #             grp = group.split(".")[1]
+        #             cr.execute("select count(*) from res_groups_users_rel where gid IN (select res_id from ir_model_data where name='%s' and module='%s' and model='%s') and uid=%s" % \
+        #                        (grp, module, 'res.groups', user))
+        #             readonly = cr.fetchall()
+        #             if readonly[0][0] >= 1:
+        #                 edit = True
+        #                 break
+        #             elif readonly[0][0] == 0:
+        #                 edit = False
+        #             else:
+        #                 edit = False
+        #
+        #         if not edit:
+        #             vals.pop(field)
+        for field in vals_0:
+            current_field = self._columns[field]
+            if current_field._classic_write:
+                for idx, vals in enumerate(vals_bulk):
+                    updates[idx].append((field, '%s', current_field._symbol_set[1](vals[field])))
+
+                #for the function fields that receive a value, we set them directly in the database
+                #(they may be required), but we also need to trigger the _fct_inv()
+                if (hasattr(current_field, '_fnct_inv')) and not isinstance(current_field, fields.related):
+                    #TODO: this way to special case the related fields is really creepy but it shouldn't be changed at
+                    #one week of the release candidate. It seems the only good way to handle correctly this is to add an
+                    #attribute to make a field `really readonly´ and thus totally ignored by the create()... otherwise
+                    #if, for example, the related has a default value (for usability) then the fct_inv is called and it
+                    #may raise some access rights error. Changing this is a too big change for now, and is thus postponed
+                    #after the release but, definitively, the behavior shouldn't be different for related and function
+                    #fields.
+                    upd_todo.append(field)
+            else:
+                #TODO: this `if´ statement should be removed because there is no good reason to special case the fields
+                #related. See the above TODO comment for further explanations.
+                if not isinstance(current_field, fields.related):
+                    upd_todo.append(field)
+            if field in self._columns and hasattr(current_field, 'selection'):
+                for vals in vals_bulk:
+                    if vals[field]:
+                        self._check_selection_field_value(field, vals[field])
+        if self._log_access:
+            for update in updates:
+                update.append(('create_uid', '%s', user))
+                update.append(('write_uid', '%s', user))
+                update.append(('create_date', "(now() at time zone 'UTC')"))
+                update.append(('write_date', "(now() at time zone 'UTC')"))
+
+        # the list of tuples used in this formatting corresponds to
+        # tuple(field_name, format, value)
+        # In some case, for example (id, create_date, write_date) we does not
+        # need to read the third value of the tuple, because the real value is
+        # encoded in the second value (the format).
+        cr.execute(
+            """INSERT INTO "%s" (%s) VALUES %s""" % (
+                self._table,
+                ', '.join('"%s"' % u[0] for u in updates[0]),
+                ', '.join('(' + ','.join(u[1] for u in upd) + ')' for upd in updates)
+            ),
+            tuple(u[2] for upd in updates for u in upd if len(u) > 2)
+        )
+        del updates
+
+        recs = self.browse(ids_new)
+
+        if self._parent_store and not context.get('defer_parent_store_computation'):
+            # todo
+            raise except_orm('ImplementationError', 'Not implemented')
+        #     if self.pool._init:
+        #         self.pool._init_parent[self._name] = True
+        #     else:
+        #         parent = vals.get(self._parent_name, False)
+        #         if parent:
+        #             cr.execute('select parent_right from '+self._table+' where '+self._parent_name+'=%s order by '+(self._parent_order or self._order), (parent,))
+        #             pleft_old = None
+        #             result_p = cr.fetchall()
+        #             for (pleft,) in result_p:
+        #                 if not pleft:
+        #                     break
+        #                 pleft_old = pleft
+        #             if not pleft_old:
+        #                 cr.execute('select parent_left from '+self._table+' where id=%s', (parent,))
+        #                 pleft_old = cr.fetchone()[0]
+        #             pleft = pleft_old
+        #         else:
+        #             cr.execute('select max(parent_right) from '+self._table)
+        #             pleft = cr.fetchone()[0] or 0
+        #         cr.execute('update '+self._table+' set parent_left=parent_left+2 where parent_left>%s', (pleft,))
+        #         cr.execute('update '+self._table+' set parent_right=parent_right+2 where parent_right>%s', (pleft,))
+        #         cr.execute('update '+self._table+' set parent_left=%s,parent_right=%s where id=%s', (pleft+1, pleft+2, id_new))
+        #         recs.invalidate_cache(['parent_left', 'parent_right'])
+
+        # invalidate and mark new-style fields to recompute; do this before
+        # setting other fields, because it can require the value of computed
+        # fields, e.g., a one2many checking constraints on records
+        recs.modified(self._fields)
+
+        # call the 'set' method of fields which are not classic_write
+        upd_todo.sort(lambda x, y: self._columns[x].priority-self._columns[y].priority)
+
+        # default element in context must be remove when call a one2many or many2many
+        rel_context = context.copy()
+        for c in context.items():
+            if c[0].startswith('default_'):
+                del rel_context[c[0]]
+
+        result = []
+        bulk_setters = ('property', 'many2many')
+        for field in upd_todo:
+            if type(self._columns[field]).__name__ in bulk_setters:
+                v_bulk = [vals[field] for vals in vals_bulk]
+                result += self._columns[field].set_bulk(self, cr, user, ids_new, field, v_bulk, rel_context) or []
+            elif type(self._columns[field]).__name__ == 'function' and not getattr(self._columns[field], '_fnct_inv', None):
+                pass
+            else:
+                raise except_orm('ImplementationError', 'Not implemented: set_bulk() for field %s' % (self._columns[field],))
+
+        # for recomputing new-style fields
+        recs.modified(upd_todo)
+
+        # check Python constraints
+        recs.with_context(prefetch_fields=False)._validate_fields(vals_0)
+
+        if recs.env.recompute and context.get('recompute', True):
+            result += recs._store_get_values(list(set(vals_0.keys() + self._inherits.values())))
+            result.sort()
+            ctx = dict(context, prefetch_fields=False)
+            done = []
+            for order, model_name, ids, fields2 in result:
+                if not (model_name, ids, fields2) in done:
+                    self.pool[model_name]._store_set_values(cr, user, ids, fields2, ctx)
+                    done.append((model_name, ids, fields2))
+            # recompute new-style fields
+            recs.recompute()
+
+        recs.check_access_rule('create')
+        recs.create_workflow()
+        return ids_new
+
     #
     # TODO: Should set perm to user.xxx
     #
