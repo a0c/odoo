@@ -205,20 +205,22 @@ class procurement_order(osv.osv):
             move_obj = self.pool.get('stock.move')
             move_dict = self._run_move_create(cr, uid, procurement, context=context)
             #create the move as SUPERUSER because the current user may not have the rights to do it (mto product launched by a sale for example)
-            if 'stock_moves_vals_to_create' in context:
-                context['stock_moves_vals_to_create'].append(move_dict)
+            if 'ctx_writable' in context and 'stock_moves_vals_to_create' in context['ctx_writable']:
+                context['ctx_writable']['stock_moves_vals_to_create'].append(move_dict)
             else:
                 move_obj.create(cr, SUPERUSER_ID, move_dict, context=context)
             return True
         return super(procurement_order, self)._run(cr, uid, procurement, context=context)
 
     def run(self, cr, uid, ids, autocommit=False, context=None):
-        if not autocommit and 'stock_moves_vals_to_create' not in context:
-            context['stock_moves_vals_to_create'] = []
+        added_stock_moves_vals_to_create = False
+        if not autocommit and 'ctx_writable' in context and 'stock_moves_vals_to_create' not in context['ctx_writable']:
+            context['ctx_writable']['stock_moves_vals_to_create'] = []
+            added_stock_moves_vals_to_create = True
         new_ids = [x.id for x in self.browse(cr, uid, ids, context=context) if x.state not in ('running', 'done', 'cancel')]
         res = super(procurement_order, self).run(cr, uid, new_ids, autocommit=autocommit, context=context)
-        if not autocommit and context.get('stock_moves_vals_to_create'):
-            vals_bulk = context.pop('stock_moves_vals_to_create')
+        if added_stock_moves_vals_to_create:
+            vals_bulk = context['ctx_writable'].pop('stock_moves_vals_to_create')
             self.pool.get('stock.move').create_bulk(cr, SUPERUSER_ID, vals_bulk, context=context)
 
         #after all the procurements are run, check if some created a draft stock move that needs to be confirmed
