@@ -811,8 +811,10 @@ class BaseModel(object):
         # Transience
         if cls.is_transient():
             cls._transient_check_count = 0
-            cls._transient_max_count = config.get('osv_memory_count_limit')
-            cls._transient_max_hours = config.get('osv_memory_age_limit')
+            if not hasattr(cls, '_transient_max_count'):
+                cls._transient_max_count = config.get('osv_memory_count_limit')
+            if not hasattr(cls, '_transient_max_hours'):
+                cls._transient_max_hours = config.get('osv_memory_age_limit')
             assert cls._log_access, \
                 "TransientModels must have log_access turned on, " \
                 "in order to implement their access rights policy"
