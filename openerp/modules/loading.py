@@ -113,7 +113,8 @@ def load_module_graph(cr, graph, status=None, perform_checks=True, skip_modules=
             for filename in _get_files_of_kind(kind):
                 _logger.info("loading %s/%s", module_name, filename)
                 noupdate = False
-                if kind in ('demo', 'demo_xml') or (filename.endswith('.csv') and kind in ('init', 'init_xml')):
+                if kind in ('demo', 'demo_xml') or (filename.endswith('.csv') and kind in ('init', 'init_xml')) \
+                        or (tools.config.options['test_speedup'] and kind in ('data', 'demo')):  # speedup tests by not reloading XML files
                     noupdate = True
                 tools.convert_file(cr, module_name, filename, idref, mode, noupdate, kind, report)
         finally:
@@ -154,7 +155,8 @@ def load_module_graph(cr, graph, status=None, perform_checks=True, skip_modules=
         loaded_modules.append(package.name)
         if hasattr(package, 'init') or hasattr(package, 'update') or package.state in ('to install', 'to upgrade'):
             registry.setup_models(cr, partial=True)
-            init_module_models(cr, package.name, models)
+            if not tools.config.options['test_speedup']:  # speedup tests by not creating/updating DB tables
+                init_module_models(cr, package.name, models)
 
         idref = {}
 
@@ -189,7 +191,8 @@ def load_module_graph(cr, graph, status=None, perform_checks=True, skip_modules=
 
             registry._init_modules.add(package.name)
             # validate all the views at a whole
-            registry['ir.ui.view']._validate_module_views(cr, SUPERUSER_ID, module_name)
+            if not tools.config.options['test_speedup']:  # speedup tests by not validating XML files
+                registry['ir.ui.view']._validate_module_views(cr, SUPERUSER_ID, module_name)
 
             if has_demo:
                 # launch tests only in demo mode, allowing tests to use demo data.

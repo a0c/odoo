@@ -196,6 +196,8 @@ class configmanager(object):
                          my_default=False, help="Enable YAML and unit tests.")
         group.add_option("--test-commit", action="store_true", dest="test_commit",
                          my_default=False, help="Commit database changes performed by YAML or XML tests.")
+        group.add_option("--test-speedup", action="store_true", dest="test_speedup",
+                         my_default=False, help="Speedup tests for TDD by not reloading/validating XML files, not creating/updating DB tables.")
         parser.add_option_group(group)
 
         # Logging Group
@@ -440,7 +442,7 @@ class configmanager(object):
             'debug_mode', 'smtp_ssl', 'load_language',
             'stop_after_init', 'logrotate', 'without_demo', 'xmlrpc', 'syslog',
             'list_db', 'xmlrpcs', 'proxy_mode',
-            'test_file', 'test_enable', 'test_commit', 'test_report_directory',
+            'test_file', 'test_enable', 'test_commit', 'test_report_directory', 'test_speedup',
             'osv_memory_count_limit', 'osv_memory_age_limit', 'max_cron_threads', 'unaccent',
             'data_dir',
         ]
