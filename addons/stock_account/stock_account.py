@@ -153,13 +153,15 @@ class stock_quant(osv.osv):
 
     def _quant_create(self, cr, uid, qty, move, lot_id=False, owner_id=False, src_package_id=False, dest_package_id=False, force_location_from=False, force_location_to=False, context=None):
         quant = super(stock_quant, self)._quant_create(cr, uid, qty, move, lot_id=lot_id, owner_id=owner_id, src_package_id=src_package_id, dest_package_id=dest_package_id, force_location_from=force_location_from, force_location_to=force_location_to, context=context)
-        if move.product_id.valuation == 'real_time':
+        do_valuation = context is None or context.get('do_valuation', True)  # avoid slow 'valuation' property access when no valuation is desired (the only case for now)
+        if do_valuation and move.product_id.valuation == 'real_time':
             self._account_entry_move(cr, uid, [quant], move, context)
         return quant
 
     def move_quants_write(self, cr, uid, quants, move, location_dest_id, dest_package_id, context=None):
         res = super(stock_quant, self).move_quants_write(cr, uid, quants, move, location_dest_id,  dest_package_id, context=context)
-        if move.product_id.valuation == 'real_time':
+        do_valuation = context is None or context.get('do_valuation', True)  # avoid slow 'valuation' property access when no valuation is desired (the only case for now)
+        if do_valuation and move.product_id.valuation == 'real_time':
             self._account_entry_move(cr, uid, quants, move, context=context)
         return res
 
