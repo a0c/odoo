@@ -2336,6 +2336,17 @@ class stock_move(osv.osv):
         # Check all ops and sort them: we want to process first the packages, then operations with lot then the rest
         operations = list(operations)
         operations.sort(key=lambda x: ((x.package_id and not x.product_id) and -4 or 0) + (x.package_id and -2 or 0) + (x.lot_id and -1 or 0))
+        #first try to find quants based on specific domains given by linked operations
+        self.action_assign_from_ops(cr, uid, operations, main_domain, context=context)
+        #then if the move isn't totally assigned, try to find quants without any specific domain
+        self.action_assign_remaining(cr, uid, todo_moves, main_domain, context=context)
+
+        #force assignation of consumable products and incoming from supplier/inventory/production
+        if to_assign_moves:
+            self.force_assign(cr, uid, list(to_assign_moves), context=context)
+
+    def action_assign_from_ops(self, cr, uid, operations, main_domain, context=None):
+        quant_obj = self.pool.get("stock.quant")
         for ops in operations:
             #first try to find quants based on specific domains given by linked operations
             for record in ops.linked_move_operation_ids:
@@ -2346,6 +2357,9 @@ class stock_move(osv.osv):
                     if qty:
                         quants = quant_obj.quants_get_prefered_domain(cr, uid, ops.location_id, move.product_id, qty, domain=domain, prefered_domain_list=[], restrict_lot_id=move.restrict_lot_id.id, restrict_partner_id=move.restrict_partner_id.id, context=context)
                         quant_obj.quants_reserve(cr, uid, quants, move, record, context=context)
+
+    def action_assign_remaining(self, cr, uid, todo_moves, main_domain, context=None):
+        quant_obj = self.pool.get("stock.quant")
         for move in todo_moves:
             #then if the move isn't totally assigned, try to find quants without any specific domain
             if move.state != 'assigned':
@@ -2353,10 +2367,6 @@ class stock_move(osv.osv):
                 qty = move.product_qty - qty_already_assigned
                 quants = quant_obj.quants_get_prefered_domain(cr, uid, move.location_id, move.product_id, qty, domain=main_domain[move.id], prefered_domain_list=[], restrict_lot_id=move.restrict_lot_id.id, restrict_partner_id=move.restrict_partner_id.id, context=context)
                 quant_obj.quants_reserve(cr, uid, quants, move, context=context)
-
-        #force assignation of consumable products and incoming from supplier/inventory/production
-        if to_assign_moves:
-            self.force_assign(cr, uid, list(to_assign_moves), context=context)
 
     def action_cancel(self, cr, uid, ids, context=None):
         """ Cancels the moves and if all moves are cancelled it cancels the picking.
