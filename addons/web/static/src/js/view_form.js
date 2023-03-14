@@ -430,7 +430,8 @@ instance.web.FormView = instance.web.View.extend(instance.web.form.FieldManagerM
         this.do_update_pager();
     },
     do_update_pager: function(hide_index) {
-        this.$pager.toggle(this.dataset.ids.length > 1);
+        if (this.$pager)
+            this.$pager.toggle(this.dataset.ids.length > 1);
         if (hide_index) {
             $(".oe_form_pager_state", this.$pager).html("");
         } else {
