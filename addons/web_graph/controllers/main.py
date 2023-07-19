@@ -17,7 +17,8 @@ class TableExporter(http.Controller):
 
 
     @http.route('/web_graph/export_xls', type='http', auth="user")
-    def export_xls(self, data, token):
+    def export_xls(self, data, file, token):
+        file = file and simplejson.loads(file)
         jdata = simplejson.loads(data)
         nbr_measures = jdata['nbr_measures']
         workbook = xlwt.Workbook()
@@ -81,7 +82,7 @@ class TableExporter(http.Controller):
 
         response = request.make_response(None,
             headers=[('Content-Type', 'application/vnd.ms-excel'),
-                    ('Content-Disposition', 'attachment; filename=table.xls;')],
+                    ('Content-Disposition', 'attachment; filename=%s.xls;' % (file or 'table'))],
             cookies={'fileToken': token})
         workbook.save(response.stream)
 

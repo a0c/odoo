@@ -858,7 +858,7 @@ openerp.web_graph.Graph = openerp.web.Widget.extend({
         openerp.web.blockUI();
         this.session.get_file({
             url: '/web_graph/export_xls',
-            data: {data: JSON.stringify(table)},
+            data: {data: JSON.stringify(table), file: JSON.stringify(this.graph_view.dataset.context['export_xls_file'])},
             complete: openerp.web.unblockUI,
             error: c.rpc_error.bind(c)
         });
