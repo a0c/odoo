@@ -46,7 +46,7 @@ class TableExporter(http.Controller):
                     x = x + nbr_measures
                 style = header_plain if 'expanded' in header else header_bold
                 for i in range(header['width']):
-                    worksheet.write(y, x + i, header['title'] if i == 0 else '', style)
+                    worksheet.write(y, x + i, header.get('title', 'Undefined') if i == 0 else '', style)
                 if header['height'] > 1:
                     carry.append({'x': x, 'height':header['height'] - 1})
                 x = x + header['width'];
@@ -71,7 +71,7 @@ class TableExporter(http.Controller):
         # Step 3: writing data
         x = 0
         for row in jdata['rows']:
-            worksheet.write(y, x, row['indent'] * '     ' + row['title'], header_plain)
+            worksheet.write(y, x, row['indent'] * '     ' + row.get('title', 'Undefined'), header_plain)
             for cell in row['cells']:
                 x = x + 1
                 if cell.get('is_bold', False):
