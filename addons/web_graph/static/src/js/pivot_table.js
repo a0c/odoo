@@ -292,6 +292,7 @@ openerp.web_graph.PivotTable = openerp.web.Class.extend({
 
     make_headers_and_cell: function (data_pts, row_headers, col_headers, index, prefix, expand) {
         var self = this;
+        var row_headers_map = new Map(row_headers.map(hdr => [hdr.path.join('//'), hdr]));  // speedup: Map guarantees O(log n)
         data_pts.forEach(function (data_pt) {
             var row_value = (prefix || []).concat(data_pt.attributes.value.slice(0,index));
             var col_value = data_pt.attributes.value.slice(index);
@@ -299,7 +300,7 @@ openerp.web_graph.PivotTable = openerp.web.Class.extend({
             if (expand && !_.find(col_headers, function (hdr) {return self.isEqual(col_value, hdr.path);})) {
                 return;
             }
-            var row = self.find_or_create_header(row_headers, row_value, data_pt);
+            var row = self.find_or_create_header(row_headers, row_value, data_pt, row_headers_map);
             var col = self.find_or_create_header(col_headers, col_value, data_pt);
 
             var cell_value = _.map(self.measures, function (m) {
@@ -313,8 +314,8 @@ openerp.web_graph.PivotTable = openerp.web.Class.extend({
         });
     },
 
-    make_header: function (values) {
-        return _.extend({
+    make_header: function (values, row_headers_map) {
+        var hdr = _.extend({
             children: [],
             domain: this.domain,
             expanded: undefined,
@@ -323,18 +324,21 @@ openerp.web_graph.PivotTable = openerp.web.Class.extend({
             root: undefined,
             title: undefined
         }, values || {});
+        if (row_headers_map !== undefined)
+            row_headers_map.set(hdr.path.join('//'), hdr);
+        return hdr
     },
 
-    find_or_create_header: function (headers, path, data_pt) {
+    find_or_create_header: function (headers, path, data_pt, row_headers_map) {
         var self = this;
-        var hdr = _.find(headers, function (header) {
+        var hdr = row_headers_map !== undefined ? row_headers_map.get(path.join('//')) : _.find(headers, function (header) {
             return self.isEqual(path, header.path);
         });
         if (hdr) {
             return hdr;
         }
         if (!path.length) {
-            hdr = this.make_header({title: _t('Total')});
+            hdr = this.make_header({title: _t('Total')}, row_headers_map);
             headers.push(hdr);
             return hdr;
         }
@@ -342,13 +346,13 @@ openerp.web_graph.PivotTable = openerp.web.Class.extend({
             path:path,
             domain:data_pt.model._domain,
             title: _t(_.last(path))
-        });
-        var parent = _.find(headers, function (header) {
+        }, row_headers_map);
+        var parent = row_headers_map !== undefined ? row_headers_map.get(_.initial(path, 1).join('//')) : _.find(headers, function (header) {
             return self.isEqual(header.path, _.initial(path, 1));
         });
 
         var previous = parent.children.length ? _.last(parent.children) : parent;
-        headers.splice(headers.indexOf(previous) + 1, 0, hdr);
+        headers.splice(headers.lastIndexOf(previous) + 1, 0, hdr);
         parent.children.push(hdr);
         return hdr;
     },
