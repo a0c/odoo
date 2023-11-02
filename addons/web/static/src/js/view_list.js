@@ -463,8 +463,11 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
         var limit = this.limit() || total;
         if (total === 0)
             this.$pager.hide();
-        else
+        else {
+            // restore oe_pager_group after hide() on grouping
+            this.$pager.find('.oe_pager_group').show();
             this.$pager.css("display", "");
+        }
         this.$pager.toggleClass('oe_list_pager_single_page', (total <= limit));
         var spager = '-';
         if (total) {
