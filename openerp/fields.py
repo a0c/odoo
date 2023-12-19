@@ -403,7 +403,10 @@ class Field(object):
 
         if not self.string and not self.related:
             # related fields get their string from their parent field
-            self.string = name.replace('_', ' ').capitalize()
+            self.string = (
+                name[:-4] if name.endswith('_ids') else
+                name[:-3] if name.endswith('_id') else name
+            ).replace('_', ' ').title()
 
         # determine self.default and cls._defaults in a consistent way
         self._determine_default(cls, name)
