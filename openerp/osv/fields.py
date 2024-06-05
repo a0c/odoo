@@ -1315,6 +1315,8 @@ class function(_column):
         '_digits_compute',
         'selection',
         '_obj',
+
+        '_auto_join',
     ]
 
     @property
@@ -1367,6 +1369,8 @@ class function(_column):
             self.selection = api.expected(api.cr_uid_context, args['selection'])
 
         if store:
+            if self._type in ('many2one', 'one2many'):
+                self._auto_join = args.get('auto_join', False)
             if self._type != 'many2one':
                 # m2o fields need to return tuples with name_get, not just foreign keys
                 self._classic_read = True
@@ -1411,6 +1415,8 @@ class function(_column):
             args['selection'] = self.selection
         elif self._type in ('many2one', 'one2many', 'many2many'):
             args['comodel_name'] = self._obj
+            if self.store and self._type in ('many2one', 'one2many'):
+                args['auto_join'] = self._auto_join
         return args
 
     def digits_change(self, cr):

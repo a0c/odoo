@@ -428,6 +428,7 @@ instance.web.ActionManager = instance.web.Widget.extend({
             this.dialog = new instance.web.Dialog(this, {
                 title: executor.action.name,
                 dialogClass: executor.klass,
+                start_large: executor.action.context.start_large || false,
                 no_close_on_esc: executor.action.context.no_close_on_esc ? true : false,
             });
 
@@ -1251,6 +1252,7 @@ instance.web.Sidebar = instance.web.Widget.extend({
                 for (var i = 0; i < items.length; i++) {
                     items[i] = {
                         label: items[i]['name'],
+                        title: items[i]['help'],
                         action: items[i],
                         classname: 'oe_sidebar_' + type
                     };
@@ -1578,6 +1580,15 @@ instance.web.View = instance.web.Widget.extend({
     is_action_enabled: function(action) {
         var attrs = this.fields_view.arch.attrs;
         return (action in attrs) ? JSON.parse(attrs[action]) : true;
+    },
+    /**
+     * Return whether the user can perform a custom action ('add', 'add_twice', 'link') in this view.
+     * An action is enabled by setting the corresponding attribute in the view's main element,
+     * like: <form string="" add="true" add_twice="true" link="true">
+     */
+    is_custom_action_enabled: function(action) {
+        var attrs = this.fields_view.arch.attrs;
+        return (action in attrs) ? JSON.parse(attrs[action]) : false;
     },
     get_view_attr: function(attr) {
         var attrs = this.fields_view.arch.attrs;

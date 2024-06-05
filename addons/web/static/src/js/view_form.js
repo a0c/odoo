@@ -3981,7 +3981,9 @@ instance.web.form.Many2OneButton = instance.web.form.AbstractField.extend({
  */
 instance.web.form.AddAnItemList = instance.web.ListView.List.extend({
     pad_table_to: function (count) {
-        if (!this.view.is_action_enabled('create') || this.is_readonly()) {
+        if (this.options.limit !== undefined)
+            count = 2;
+        if (!this.view.is_custom_action_enabled('add') && !this.view.is_action_enabled('create') || this.is_readonly()) {
             this._super(count);
             return;
         }
@@ -4897,6 +4899,7 @@ instance.web.form.FieldMany2Many = instance.web.form.AbstractField.extend(instan
                     'sortable': false,
                     'reorderable': false,
                     'import_enabled': false,
+                    'limit': self.options.limit,
             });
         var embedded = (this.field.views || {}).tree;
         if (embedded) {
@@ -4985,6 +4988,7 @@ instance.web.form.Many2ManyListView = instance.web.ListView.extend(/** @lends in
             {
                 title: _t("Add: ") + this.m2m_field.string,
                 no_create: this.m2m_field.options.no_create,
+                form_large: this.m2m_field.options.form_large || false,
             },
             new instance.web.CompoundDomain(this.m2m_field.build_domain(), ["!", ["id", "in", this.m2m_field.dataset.ids]]),
             this.m2m_field.build_context()

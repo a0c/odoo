@@ -5093,8 +5093,12 @@ class BaseModel(object):
         self._transient_check_count = 0
 
         # Age-based expiration
-        if self._transient_max_hours:
-            self._transient_clean_rows_older_than(cr, self._transient_max_hours * 60 * 60)
+        try:
+            if self._transient_max_hours:
+                self._transient_clean_rows_older_than(cr, self._transient_max_hours * 60 * 60)
+        except:
+            _logger.info('Model failing to auto-clean: %s' % self._name)
+            raise
 
         # Count-based expiration
         if self._transient_max_count:
@@ -5922,6 +5926,8 @@ class BaseModel(object):
             values = dict(record._cache)
             # attach ``self`` with a different context (for cache consistency)
             record._origin = self.with_context(__onchange=True)
+            # allow onchanges to distinguish between user modifying the field and initial onchanges on view loading
+            record._is_onchange_by_user = not isinstance(field_name, list)
 
         # load fields on secondary records, to avoid false changes
         with env.do_in_onchange():
