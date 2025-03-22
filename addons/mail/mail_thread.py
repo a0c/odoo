@@ -513,7 +513,7 @@ class mail_thread(osv.AbstractModel):
         for browse_record in self.browse(cr, uid, ids, context=context):
             initial = initial_values[browse_record.id]
             changes = set()
-            tracked_values = {}
+            tracked_values = OrderedDict()  # allow ordering fields in Chatter messages
 
             # generate tracked_values data structure: {'col_name': {col_info, new_value, old_value}}
             for col_name, col_info in tracked_fields.items():
