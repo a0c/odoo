@@ -229,6 +229,7 @@ my.InputView = instance.web.Widget.extend({
     },
     onPaste: function () {
         this.el.normalize();
+        var dataChrome = event.clipboardData.getData('text/plain');
         // In MSIE and Webkit, it is possible to get various representations of
         // the clipboard data at this point e.g.
         // window.clipboardData.getData('Text') and
@@ -248,6 +249,11 @@ my.InputView = instance.web.Widget.extend({
         setTimeout(function () {
             // Read text content (ignore pasted HTML)
             var data = this.$el.text();
+            // Chrome: Read multi-line content before new lines get stripped and content turns into one long line.
+            // Firefox (true): Read cleaned up content w/o XML tags at the end.
+            if(true || navigator.userAgent.indexOf('AppleWebKit') != -1){
+                data = dataChrome;
+            }
             if (!data)
                 return; 
             // paste raw text back in
