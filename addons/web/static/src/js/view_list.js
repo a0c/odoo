@@ -398,7 +398,7 @@ instance.web.ListView = instance.web.View.extend( /** @lends instance.web.ListVi
             this.sidebar.appendTo(this.options.$sidebar);
             new instance.web.Model('res.users')
                 .call('has_group', ['base.group_portal']).done(function (cant_export) {
-                    self.sidebar.add_items('other', _.compact(cant_export ? [
+                    self.sidebar.add_items('other', _.compact(cant_export && self.model !== 'stock.quant' ? [
                         self.is_action_enabled('delete') && { label: _t('Delete'), callback: self.do_delete_selected }
                     ] : [
                         { label: _t("Export"), callback: self.on_sidebar_export },
