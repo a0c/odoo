@@ -111,7 +111,8 @@ class ImDispatch(object):
     def loop(self):
         """ Dispatch postgres notifications to the relevant polling threads/greenlets """
         _logger.info("Bus.loop listen imbus on db postgres")
-        with openerp.sql_db.db_connect('postgres').cursor() as cr:
+        session_pool_suffix = openerp.tools.config.get("db_session_pool_mode_suffix", '')
+        with openerp.sql_db.db_connect('postgres' + session_pool_suffix).cursor() as cr:
             conn = cr._cnx
             cr.execute("listen imbus")
             cr.commit();
